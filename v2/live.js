@@ -35,7 +35,7 @@ const sweepTried = new Set();
 let hostNameTry = 0;
 setInterval(() => { rc = 0; }, 20000);
 
-const denied = e => e && (e.code === "PERMISSION_DENIED" || /permission_denied/i.test(e.message || ""));
+const denied = e => e && (e.code === "PERMISSION_DENIED" || /permission[_ ]denied/i.test(e.message || ""));
 const show = id => document.querySelectorAll(".screen").forEach(s => { s.hidden = s.id !== id; });
 const serverNow = () => Date.now() + serverOffset;
 function toast(msg) { const t = $("toast"); t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => { t.hidden = true; }, 7000); }
