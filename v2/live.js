@@ -1,4 +1,5 @@
-// Learn Live With Friends - v2, PHASE D (UNTESTED).
+// Learn Live With Friends - v2, PHASE E1 (UNTESTED): adds the English -> Japanese race mode (page-only; same rules, same data shapes).
+// (Phase D below:)
 // Phase D: English + Japanese text, nickname/room-name filter, results screen, Words to Review (this device only),
 //          projector view, PLAY AGAIN, host Remove with confirmation, optional sound/vibration (OFF by default).
 // Phase D changes NO Firebase paths, rules or data shapes. Browser storage keys used: nhLive_nickname, nhLive_sound, nhLive_vibrate, (session) nhLive_review.
@@ -569,10 +570,11 @@ function renderRace(iAmHost) {
   $("results").hidden = !over; $("live").hidden = over;
   tick();
   // does MY copy of the vocabulary give the host's exact 40 words?
-  const key = c.fingerprint + (vocab ? "v" : "n");
+  const key = c.fingerprint + ":" + c.mode + (vocab ? "v" : "n");
   if (key !== verifyKey) {
     verifyKey = key; const v = $("race-verify"); raceWords = null;
-    if (!vocab) setT(v, "checking");
+    if (!V.MODES.some(m => m.id === c.mode && m.available)) setT(v, "modeUnsupported");   // this page does not know the host's game mode: do not guess
+    else if (!vocab) setT(v, "checking");
     else V.verifyConfig(vocab, c).then(r => {
       if (verifyKey !== key) return;
       if (r.status === "ok") { raceWords = r.words; setT(v, "verifyOk"); startEngine(); if (room) render(); }
@@ -646,8 +648,8 @@ function renderResults(racer) {
 function renderReview(racer) {
   $("review").hidden = !(racer && raceWords);
   if ($("review").hidden) return;
-  const rv = reviewState(), wrong = [...rv.wrong].sort((a, b) => a - b), skip = [...rv.skip].filter(i => !rv.wrong.has(i)).sort((a, b) => a - b);
-  const fill = (ul, list) => { ul.replaceChildren(); for (const i of list) { const w = raceWords[i]; if (!w) continue; const li = document.createElement("li"); const a = document.createElement("span"); a.textContent = w.japanese; const b = document.createElement("b"); b.textContent = w.english; li.append(a, b); ul.append(li); } };
+  const mode = raceData.config.mode, rv = reviewState(), wrong = [...rv.wrong].sort((a, b) => a - b), skip = [...rv.skip].filter(i => !rv.wrong.has(i)).sort((a, b) => a - b);
+  const fill = (ul, list) => { ul.replaceChildren(); for (const i of list) { const w = raceWords[i]; if (!w) continue; const li = document.createElement("li"); const a = document.createElement("span"); a.textContent = V.promptOf(w, mode); const b = document.createElement("b"); b.textContent = V.answerOf(w, mode); li.append(a, b); ul.append(li); } };
   fill($("review-wrong-list"), wrong); fill($("review-skip-list"), skip);
   $("review-wrong").hidden = !wrong.length; $("review-skip").hidden = !skip.length; $("review-none").hidden = !!(wrong.length || skip.length);
 }
@@ -702,18 +704,12 @@ function startEngine() {
   const solved = new Set(solvedOf(uid));                               // resume after a reload / reconnect
   const order = V.shuffleSeeded([...Array(V.TOTAL).keys()], (raceData.config.seed ^ hash32(uid)) >>> 0);
   const c = raceData.config, units = Object.values(c.units).map(Number);
-  eng = { key, order, queue: order.filter(i => !solved.has(i)), solved, pending: new Set(), chain: Promise.resolve(), lastWrite: 0, choices: {}, wrong: new Set(), locked: false, pool: V.buildPool(vocab, c.grade, units, c.mode).words, shown: "" };
+  eng = { key, mode: c.mode, order, queue: order.filter(i => !solved.has(i)), solved, pending: new Set(), chain: Promise.resolve(), lastWrite: 0, choices: {}, wrong: new Set(), locked: false, pool: V.buildPool(vocab, c.grade, units, c.mode).words, shown: "" };
   renderPlayMode(true, false);
 }
-function choicesFor(i) {
+function choicesFor(i) {   // 4 choices for question i, built by vocab.js for the race's mode (every racer uses the host's mode)
   if (eng.choices[i]) return eng.choices[i];
-  const t = raceWords[i], seen = new Set([t.english.toLowerCase()]), opts = [];
-  for (const w of shuffle(eng.pool)) {
-    if (opts.length >= 3) break;
-    if (V.sameEnglish(w, t) || V.sameJapanese(w, t) || seen.has(w.english.toLowerCase())) continue;
-    seen.add(w.english.toLowerCase()); opts.push({ text: w.english, ok: false });
-  }
-  return (eng.choices[i] = shuffle([{ text: t.english, ok: true }, ...opts]));
+  return (eng.choices[i] = V.makeChoices(raceWords[i], eng.pool, eng.mode));
 }
 function renderPlayMode(racer, over) {
   const playing = racer && !!eng && !over && entry.status === "racing";
@@ -728,7 +724,9 @@ function renderPlayMode(racer, over) {
   const i = eng.queue[0], shownKey = i + "|" + [...eng.wrong].join(",") + "|" + eng.locked + "|" + eng.solved.size;
   if (eng.shown === shownKey) return; eng.shown = shownKey;
   setT($("q-label"), "question", { n: eng.solved.size + 1, s: eng.solved.size });
-  $("q-word").textContent = raceWords[i].japanese;
+  $("q-word").textContent = V.promptOf(raceWords[i], eng.mode);
+  $("q-word").className = "qword" + (V.promptOf(raceWords[i], eng.mode).length > 16 ? " long" : "");
+  setT($("q-ask"), V.direction(eng.mode) === "en2jp" ? "askJa" : "whichWord");
   const box = $("q-choices"); box.replaceChildren();
   choicesFor(i).forEach((ch, k) => {
     const b = document.createElement("button"); b.type = "button"; b.textContent = ch.text;

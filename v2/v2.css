@@ -82,13 +82,8 @@ body.projector .board .bar{height:18px}
 body.projector .podium .slot{font-size:1.6rem;max-width:260px}
 body.projector #btn-proj{font-size:1rem}
 @media (max-width:480px){.board li{grid-template-columns:2em 1fr auto;font-size:.95rem}.qword{font-size:1.7rem}.podium .slot{font-size:.9rem}}
-/* Keep Remove button readable on the race board */
-.board .kick{
-  min-width:72px;
-  margin-left:8px;
-  white-space:nowrap;
-}
 
-.board .kick[data-ja]::after{
-  white-space:nowrap;
-}
+/* Phase E1: English -> Japanese (long English prompts, long Japanese answers) */
+.qword.long{font-size:1.5rem}
+.choices button{overflow-wrap:anywhere;line-height:1.35}
+@media (max-width:480px){.qword.long{font-size:1.3rem}}

@@ -1,14 +1,14 @@
-// NH Learn Live - vocabulary pool for races (Phase B).
+// NH Learn Live - vocabulary pool for races (Phase B; English -> Japanese added in Phase E1).
 // Pure functions: no DOM, no Firebase, no localStorage. Reads PORTAL_DATA only; never modifies it.
 export const PORTAL_URL = "https://pinosensei.github.io/nh-interactive-dev/portal-data.js";
 export const TOTAL = 40;        // questions per race
 export const MAX_UNITS = 4;     // units a host may combine
 export const SCHEMA_VERSION = 1;
 
-// Game modes. Only the first one is playable now; the others are listed so the dropdown can show "coming soon".
+// Game modes. The two "choice4" modes are playable; the others are listed so the dropdown can show "coming soon".
 export const MODES = [
   { id: "jp2en-choice4", label: "Japanese → English (4 choices)", available: true },
-  { id: "en2jp-choice4", label: "English → Japanese (4 choices)", available: false },
+  { id: "en2jp-choice4", label: "English → Japanese (4 choices)", available: true },
   { id: "mixed-choice4", label: "Mixed (4 choices)", available: false },
   { id: "spelling", label: "Spelling (typing)", available: false },
   { id: "matching", label: "Matching", available: false }
@@ -38,10 +38,46 @@ export const sameJapanese = (a, b) => normJa(a.japanese) === normJa(b.japanese);
 const dupKey = w => normEn(w.english) + "|" + normJa(w.japanese);
 
 // Which words a mode can use. jp2en needs a real Japanese meaning (not a note like "⇐ do not").
+// en2jp uses the same rule, minus entries whose whole Japanese is only a bracketed grammar note
+// (e.g. "was = ［am、isの過去形］"): fine as a hint in jp2en, but not a meaning to pick in a Japanese choice list.
+const GRAMMAR_NOTE = /^\s*[\[［][^\]］]*[\]］]\s*$/;
 const USABLE = {
-  "jp2en-choice4": w => !!normEn(w.english) && JP.test(w.japanese || "") && !ARROW.test(w.japanese || "")
+  "jp2en-choice4": w => !!normEn(w.english) && JP.test(w.japanese || "") && !ARROW.test(w.japanese || ""),
+  "en2jp-choice4": w => !!normEn(w.english) && JP.test(w.japanese || "") && !ARROW.test(w.japanese || "") && !GRAMMAR_NOTE.test(w.japanese || "")
 };
 export const isUsable = (w, modeId) => (USABLE[modeId] || USABLE["jp2en-choice4"])(w);
+
+/* ------------------------------------------------------------ question direction & choices */
+export const direction = modeId => (modeId === "en2jp-choice4" ? "en2jp" : "jp2en");
+export const promptOf = (w, modeId) => (direction(modeId) === "en2jp" ? w.english : w.japanese);   // what the student reads
+export const answerOf = (w, modeId) => (direction(modeId) === "en2jp" ? w.japanese : w.english);   // what the student picks
+const looseJa = s => normJa(s).replace(/\s+/g, "").replace(/[。．.]+$/, "");                          // "ありがとう。" == "ありがとう"
+function shuffleWith(a, rand) { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(rand() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
+// The 4 choices for one question: the right answer + 3 wrong ones from the same pool. Returns [{ text, ok }] in random order.
+// A wrong choice never has the same English or Japanese as the target, and no two choices are the same text.
+// jp2en: random wrong choices (unchanged since Phase C). en2jp: wrong Japanese choices of similar length, so a short answer is not a giveaway.
+export function makeChoices(target, pool, modeId, rand = Math.random) {
+  const dir = direction(modeId), opts = [];
+  if (dir === "jp2en") {
+    const seen = new Set([normEn(target.english)]);
+    for (const w of shuffleWith(pool, rand)) {
+      if (opts.length >= 3) break;
+      if (sameEnglish(w, target) || sameJapanese(w, target) || seen.has(normEn(w.english))) continue;
+      seen.add(normEn(w.english)); opts.push({ text: w.english, ok: false });
+    }
+    return shuffleWith([{ text: target.english, ok: true }, ...opts], rand);
+  }
+  const want = looseJa(target.japanese), len = want.length, seen = new Set([want]);
+  const cands = shuffleWith(pool, rand).filter(w => !sameEnglish(w, target) && !sameJapanese(w, target) && looseJa(w.japanese) !== want);
+  const near = cands.map((w, i) => ({ w, i, d: Math.abs(looseJa(w.japanese).length - len) })).sort((a, b) => a.d - b.d || a.i - b.i).slice(0, 14).map(x => x.w);
+  for (const w of shuffleWith(near, rand)) {
+    if (opts.length >= 3) break;
+    const k = looseJa(w.japanese); if (seen.has(k)) continue;
+    seen.add(k); opts.push({ text: w.japanese, ok: false });
+  }
+  for (const w of cands) { if (opts.length >= 3) break; const k = looseJa(w.japanese); if (seen.has(k)) continue; seen.add(k); opts.push({ text: w.japanese, ok: false }); }   // (only if the 14 nearest were not enough)
+  return shuffleWith([{ text: target.japanese, ok: true }, ...opts], rand);
+}
 
 /* ------------------------------------------------------------ pools */
 export function gradeList(data) {

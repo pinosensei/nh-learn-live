@@ -66,6 +66,8 @@ export const S = {
   raceOver:     ["🏁 Race finished", "🏁 レースしゅうりょう"],
   question:     ["Question {n}/40 · solved {s}", "もんだい {n}/40 ・ せいかい {s}"],
   whichWord:    ["What is the English word?", "英語は どれ？"],
+  askJa:        ["What does it mean in Japanese?", "日本語の いみは どれ？"],
+  modeUnsupported:["⚠️ This page doesn't know the host's game mode. Please reload the page.", "⚠️ このページは ホストの ゲームの しゅるいを しりません。ページを 再読み込みしてください。"],
   correct:      ["✅ Correct!", "✅ せいかい！"],
   tryAgain:     ["Not quite. Try again!", "おしい！ もう一度 チャレンジ！"],
   skip:         ["SKIP", "スキップ"],
