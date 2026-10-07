@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Learn Live With Friends (v2 – Phase B test)</title>
+<title>Learn Live With Friends (v2 – Phase C test)</title>
 <link rel="stylesheet" href="../style.css">
 <link rel="stylesheet" href="v2.css">
 </head>
@@ -14,7 +14,7 @@
   <!-- ROOM BROWSER -->
   <section id="browser" class="screen">
     <h1>🎮 Learn Live With Friends</h1>
-    <p class="sub">Phase B test: rooms, lobby, host setup and START. The questions themselves are not built yet.</p>
+    <p class="sub">Phase C test: rooms, lobby, host setup, START and the race itself.</p>
     <label>Your nickname (up to 20 characters)
       <input id="nick" maxlength="20" autocomplete="off">
     </label>
@@ -95,20 +95,32 @@
     <button id="btn-leave" class="back" type="button">Leave room</button>
   </section>
 
-  <!-- RACE (Phase B placeholder: countdown, settings check, racers) -->
+  <!-- RACE -->
   <section id="race" class="screen" hidden>
     <h2 id="race-title">🏁 Race</h2>
     <p id="race-count" class="countdown" aria-live="polite"></p>
+
+    <div id="play" class="card" hidden>
+      <div class="label">Question <b id="q-num">1</b>/40 · solved <b id="q-solved">0</b></div>
+      <p class="note">What is the English word?</p>
+      <p id="q-word" class="qword"></p>
+      <div id="q-choices" class="choices"></div>
+      <p id="q-msg" class="note" aria-live="polite"></p>
+      <button id="q-skip" class="small" type="button">SKIP</button>
+    </div>
+    <div id="my-done" class="card made" hidden><h3 id="my-done-text">🎉 You finished!</h3></div>
+    <p id="spectator-note" class="note" hidden>You are watching this race.</p>
+
+    <div class="card">
+      <div class="label">Live board <span id="race-n"></span></div>
+      <ol id="board" class="board"></ol>
+    </div>
     <div class="card">
       <div class="label">Game</div>
       <p id="race-info"></p>
       <p id="race-verify" class="note"></p>
     </div>
-    <div class="card">
-      <div class="label">Racers <span id="race-n"></span></div>
-      <ul id="race-players"></ul>
-    </div>
-    <p class="note">Phase B test: the questions and the live board come in the next build.</p>
+    <p id="return-note" class="note" aria-live="polite"></p>
     <button id="btn-end" class="big blue" type="button" hidden>END RACE</button>
     <button id="btn-leave2" class="back" type="button">Leave room</button>
   </section>
