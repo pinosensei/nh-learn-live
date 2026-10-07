@@ -1,4 +1,7 @@
-// Learn Live With Friends - v2, PHASE B (UNTESTED).
+// Learn Live With Friends - v2, PHASE D (UNTESTED).
+// Phase D: English + Japanese text, nickname/room-name filter, results screen, Words to Review (this device only),
+//          projector view, PLAY AGAIN, host Remove with confirmation, optional sound/vibration (OFF by default).
+// Phase D changes NO Firebase paths, rules or data shapes. Browser storage keys used: nhLive_nickname, nhLive_sound, nhLive_vibrate, (session) nhLive_review.
 // Phase A: Room Browser, Create Room, Join (public/password), 35 racer seats, Lobby, Leave, host transfer, presence, cleanup.
 // Phase B: host setup (textbook, 1-4 units, game mode), word-pool check, START (writes the race config + roster),
 //          a placeholder race screen (countdown, settings check, racers), END RACE, host "Remove" for dropped students.
@@ -11,6 +14,8 @@ import { getAuth, setPersistence, browserSessionPersistence, onAuthStateChanged,
 import { getDatabase, ref, get, set, update, onValue, onDisconnect, serverTimestamp }
   from "https://www.gstatic.com/firebasejs/10.14.1/firebase-database.js";
 import * as V from "./vocab.js";
+import { t, MODE_JA, questionsJa, ordinalEn } from "./strings.js";
+import { checkNickname, checkRoomName } from "./namefilter.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyCQWPYbU7mMBmcoQMs3_Qn8ujpwOf1GxSw",
@@ -42,12 +47,17 @@ let vocab = null, vocabErr = null, vocabLoading = false;           // the publis
 let setupData = null, raceData = null, sel = { grade: "nh1", units: [], mode: V.MODES[0].id }, selDirty = false;
 let starting = false, setupT = null, stuckT = null, setupKey = "", verifyKey = "", armedLight = false, armQ = Promise.resolve(), raceTick = null;
 let hostNameTry = 0;
+let wasMember = false, blipped = false;   // "removed by the host" = our entry vanished while we stayed connected
+let review = null;                       // Words to Review for this race, this device only: { key, wrong:Set, skip:Set }
 setInterval(() => { rc = 0; }, 20000);
 
 const denied = e => e && (e.code === "PERMISSION_DENIED" || /permission[_ ]denied/i.test(e.message || ""));
 const show = id => document.querySelectorAll(".screen").forEach(s => { s.hidden = s.id !== id; });
 const serverNow = () => Date.now() + serverOffset;
-function toast(msg) { const t = $("toast"); t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => { t.hidden = true; }, 7000); }
+// English goes in the text, the Japanese in data-ja (the stylesheet shows it on the line below).
+function setX(el, x) { el.textContent = x.en; el.setAttribute("data-ja", x.ja); }
+function setT(el, key, vars) { setX(el, t(key, vars)); }
+function toast(key, vars) { const el = $("toast"); setT(el, key, vars); el.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => { el.hidden = true; }, 7000); }
 async function sha256(s) {
   const b = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
   return [...new Uint8Array(b)].map(x => x.toString(16).padStart(2, "0")).join("");
@@ -55,7 +65,13 @@ async function sha256(s) {
 function genCode() { let s = ""; const buf = new Uint8Array(32); while (s.length < 6) { crypto.getRandomValues(buf); for (const b of buf) if (b < 248 && s.length < 6) s += ALPHA[b % 31]; } return s; }
 function shuffle(a) { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
 function getNick() { return $("nick").value.trim(); }
-function nickOk() { const n = getNick(); if (!n || n.length > 20) { toast("Please enter a nickname (1–20 characters)."); $("nick").focus(); return null; } try { localStorage.setItem("nhLive_nickname", n); } catch {} return n; }
+function nickOk() {
+  const r = checkNickname(getNick());
+  if (!r.ok) { toast(r.reason === "blocked" ? "nickBlocked" : r.reason === "chars" ? "nickChars" : "needNick"); $("nick").focus(); return null; }
+  $("nick").value = r.value;
+  try { localStorage.setItem("nhLive_nickname", r.value); } catch {}
+  return r.value;
+}
 
 /* ---------------------------------------------------------------- start-up */
 async function init() {
@@ -71,13 +87,14 @@ async function init() {
     onValue(ref(db, ".info/serverTimeOffset"), s => { serverOffset = s.val() || 0; });
     onValue(ref(db, ".info/connected"), s => {
       online = s.val() === true;
+      if (!online) blipped = true;
       if (online && wasOnline === false && room) reconnected();
       wasOnline = online;
     });
     $("btn-new").disabled = false;
     startBrowser();
     loadVocab();
-  } catch (e) { console.error(e); toast("Couldn't connect to Firebase. Please check the setup and try again."); }
+  } catch (e) { console.error(e); toast("noServer"); }
 }
 async function loadVocab() {
   if (vocab || vocabLoading) return;
@@ -89,9 +106,9 @@ async function loadVocab() {
 setInterval(() => { if (!vocab && room) loadVocab(); }, 20000);
 async function work(fn) {
   if (busy) return;
-  if (!online) { toast("Not connected yet. Please wait a moment and try again."); return; }
+  if (!online) { toast("notConnected"); return; }
   busy = true; document.querySelectorAll(".big").forEach(b => { b.disabled = true; });
-  try { await fn(); } catch (e) { console.error(e); toast("Something went wrong. Please try again."); }
+  try { await fn(); } catch (e) { console.error(e); toast("wrong"); }
   finally { busy = false; document.querySelectorAll(".big").forEach(b => { b.disabled = false; }); if (room) { setupKey = ""; render(); } }
 }
 
@@ -99,15 +116,15 @@ async function work(fn) {
 function startBrowser() {
   if (unsubBrowser) unsubBrowser();
   unsubBrowser = onValue(ref(db, "liveRoomList"), s => { listing = s.val() || {}; renderBrowser(); sweep(); },
-    e => { console.error(e); toast("Couldn't load the room list."); });
+    e => { console.error(e); toast("roomListFail"); });
 }
 const seatCount = e => Object.keys((e && e.seats) || {}).length;
 function roomState(e) {
-  if (e.status === "starting") return ["Starting", "b-racing", false];
-  if (e.status === "racing") return ["Racing", "b-racing", false];
-  if (e.status === "finished") return ["Finished", "b-finished", false];
-  if (seatCount(e) >= MAX) return ["Full", "b-full", false];
-  return ["Waiting", "b-waiting", true];
+  if (e.status === "starting") return ["stStarting", "b-racing", false];
+  if (e.status === "racing") return ["stRacing", "b-racing", false];
+  if (e.status === "finished") return ["stFinished", "b-finished", false];
+  if (seatCount(e) >= MAX) return ["stFull", "b-full", false];
+  return ["stWaiting", "b-waiting", true];
 }
 function renderBrowser() {
   const box = $("rooms"); box.replaceChildren();
@@ -120,9 +137,9 @@ function renderBrowser() {
     const b = document.createElement("button"); b.type = "button"; b.className = "room-row" + (joinable ? "" : " off");
     const lock = document.createElement("span"); lock.textContent = e.locked ? "🔒" : "🌐";
     const name = document.createElement("span"); name.className = "rn"; name.textContent = e.name;
-    const host = document.createElement("small"); host.textContent = "Host: " + e.hostName; name.append(host);
+    const host = document.createElement("small"); setT(host, "hostIs", { name: e.hostName }); name.append(host);
     const cnt = document.createElement("span"); cnt.className = "rc"; cnt.textContent = `${seatCount(e)}/${MAX}`;
-    const st = document.createElement("span"); st.className = "badge " + cls; st.textContent = label;
+    const st = document.createElement("span"); st.className = "badge " + cls; setT(st, label);
     b.append(lock, name, cnt, st);
     b.onclick = () => clickRoom(id);
     box.append(b);
@@ -143,10 +160,10 @@ async function sweep() { // tidy up rooms that look dead; the rules refuse unles
 
 function clickRoom(id) {
   const nick = nickOk(); if (!nick) return;
-  const e = listing[id]; if (!e) return toast("That room is gone.");
+  const e = listing[id]; if (!e) return toast("roomGone");
   const [, , joinable] = roomState(e);
   if (e.status !== "waiting") { work(() => joinRoom(id, null)); return; }   // a racer who dropped can return; anybody else is told the race is running
-  if (!joinable) return toast("This room is full (35/35).");
+  if (!joinable) return toast("roomFull");
   if (e.locked) { pending = id; $("pwdlg-name").textContent = e.name; $("j-pw").value = ""; show("pwdlg"); $("j-pw").focus(); return; }
   work(() => joinRoom(id, null));
 }
@@ -157,9 +174,10 @@ $("btn-new").onclick = () => { if (nickOk()) { $("c-name").value = ""; $("c-pw")
 document.querySelectorAll("[data-back]").forEach(b => { b.onclick = () => { show("browser"); startBrowser(); }; });
 $("form-create").addEventListener("submit", ev => { ev.preventDefault(); work(async () => {
   const nick = nickOk(); if (!nick) return;
-  const name = $("c-name").value.trim(), pw = $("c-pw").value;
-  if (!name || name.length > 30) return toast("Please enter a room name (1–30 characters).");
-  if (pw && (pw.length < 6 || pw.length > 20)) return toast("The password must be 6–20 characters (or leave it empty).");
+  const rn = checkRoomName($("c-name").value), pw = $("c-pw").value;
+  if (!rn.ok) return toast(rn.reason === "blocked" ? "roomBlocked" : rn.reason === "chars" ? "roomChars" : "needRoom");
+  const name = rn.value;
+  if (pw && (pw.length < 6 || pw.length > 20)) return toast("pwLength");
   for (let i = 0; i < 8; i++) {
     const id = genCode(), proof = pw ? await sha256(id + ":" + pw) : null;
     const member = { nickname: nick, joinedAt: serverTimestamp(), tabId, seat: "1" };
@@ -175,7 +193,7 @@ $("form-create").addEventListener("submit", ev => { ev.preventDefault(); work(as
     } catch (e) { if (!denied(e)) throw e; }   // a taken id is refused by the rules: just try another
   }
   await disarm();
-  toast("Couldn't create a room. Please try again in a moment.");
+  toast("createFail");
 }); });
 
 /* --------------------------------------------------------------------- join */
@@ -198,7 +216,7 @@ async function disarm() { try { await onDisconnect(ref(db)).cancel(); } catch {}
 async function joinRoom(id, pw) {
   const nick = nickOk(); if (!nick) return;
   let e = (await get(ref(db, `liveRoomList/${id}`))).val();
-  if (!e) return leaveLocal("That room is gone.");
+  if (!e) return leaveLocal("roomGone");
   const proof = e.locked ? await sha256(id + ":" + (pw || "")) : null;
 
   // Already a member with this identity (duplicate tab, or a quick reload)? Take the entry over.
@@ -213,7 +231,7 @@ async function joinRoom(id, pw) {
   } catch (err) { if (!denied(err)) throw err; }   // denied = not a member yet: the normal case
 
   for (let attempt = 0; attempt < 12; attempt++) {
-    if (e.status !== "waiting") { await disarm(); return toast("A race is already in progress. You can join the next one."); }
+    if (e.status !== "waiting") { await disarm(); return toast("inProgress"); }
     const taken = e.seats || {};
     const free = [], busySeats = [];
     for (let n = 1; n <= MAX; n++) (taken[n] ? busySeats : free).push(n);
@@ -228,21 +246,21 @@ async function joinRoom(id, pw) {
     } catch (err) {
       if (!denied(err)) throw err;
       e = (await get(ref(db, `liveRoomList/${id}`))).val();   // refresh: maybe taken, full, started or gone
-      if (!e) { await disarm(); return toast("That room is gone."); }
+      if (!e) { await disarm(); return toast("roomGone"); }
       if (attempt === 2 && e.locked) break;                   // seats are free but we keep being refused: almost certainly the password
     }
   }
   await disarm();
-  toast(e && e.locked ? "Couldn't join. Wrong password, or the room just filled up." : "Couldn't join. The room may be full or closed.");
+  toast(e && e.locked ? "joinFailPw" : "joinFail");
 }
 
 /* -------------------------------------------------------------------- lobby */
 function enter(r) {
   if (unsubBrowser) { unsubBrowser(); unsubBrowser = null; }
-  room = r; members = {}; hostUid = null; seatsReal = {}; presence = {}; entry = null; pwShown = false; rc = 0;
+  wasMember = false; blipped = false; review = null; room = r; members = {}; hostUid = null; seatsReal = {}; presence = {}; entry = null; pwShown = false; rc = 0;
   setupData = null; raceData = null; selDirty = false; starting = false; setupKey = ""; verifyKey = "";
   $("created").hidden = !r.pw;
-  $("created-pw").textContent = "•".repeat(r.pw ? r.pw.length : 0); $("btn-pw").textContent = "Show";
+  $("created-pw").textContent = "•".repeat(r.pw ? r.pw.length : 0); setT($("btn-pw"), "show");
   announce(); attach(); show("lobby"); startHeartbeat();
 }
 function announce() {
@@ -268,27 +286,29 @@ function membersChanged() {
   const me = members[uid];
   if (me && me.tabId !== tabId) { // another tab (same identity) took this room over
     detach(); room = null; disarm(); startBrowser(); show("browser");
-    return toast("This room is already open in another tab. Please use that tab (or close it first).");
+    return toast("otherTab");
   }
-  if (me) room.seat = me.seat || null;
+  if (me) { room.seat = me.seat || null; wasMember = true; blipped = false; }
+  else if (wasMember && online && !blipped) { leaveLocal("youWereRemoved"); disarm(); return; }   // the host removed us while we were connected: do not sit down again
   else { recover(); return; }
   render();
 }
 
 async function recover() { // our entry vanished (network blip, reload race): try to sit down again
   if (!room || recovering) return;
-  if (++rc > 3) return leaveLocal("Lost connection to the room.");
+  if (++rc > 3) return leaveLocal("lostRoom");
   recovering = true; const r = room;
   try {
     const e = (await get(ref(db, `liveRoomList/${r.id}`))).val();
-    if (!e) return leaveLocal("The room is no longer available.");
-    if (e.status !== "waiting") return leaveLocal("You were disconnected and the race has already started.");
+    if (!e) return leaveLocal("roomUnavailable");
+    if (wasMember && online && !blipped) { leaveLocal("youWereRemoved"); disarm(); return; }   // the room is still there but our place is gone, and we never lost the connection: the host removed us (the server also cuts our listeners when that happens)
+    if (e.status !== "waiting") return leaveLocal("lostRace");
     const proof = e.locked && r.key ? await sha256(r.id + ":" + r.key) : null;
-    if (e.locked && !proof) return leaveLocal("You were disconnected from the room. Please join again.");
+    if (e.locked && !proof) return leaveLocal("joinAgain");
     for (let n = 0; n < 6; n++) {
       const taken = (await get(ref(db, `liveRoomList/${r.id}`))).val()?.seats || {};
       const free = []; for (let k = 1; k <= MAX; k++) if (!taken[k]) free.push(k);
-      if (!free.length) return leaveLocal("The room filled up while you were disconnected.");
+      if (!free.length) return leaveLocal("roomFilled");
       const seat = shuffle(free)[0], member = { nickname: r.nick, joinedAt: serverTimestamp(), tabId, seat: String(seat) };
       if (proof) member.proof = proof;
       try {
@@ -298,8 +318,8 @@ async function recover() { // our entry vanished (network blip, reload race): tr
         room.seat = String(seat); detach(); attach(); startHeartbeat(); announce(); return;   // the server cancelled our listeners when access was lost
       } catch (err) { if (!denied(err)) throw err; }
     }
-    leaveLocal("Couldn't rejoin the room.");
-  } catch (e) { console.error(e); leaveLocal("Lost connection to the room."); }
+    leaveLocal("rejoinFail");
+  } catch (e) { console.error(e); leaveLocal("lostRoom"); }
   finally { recovering = false; }
 }
 async function reconnected() { if (!room) return; try { await arm(room.id, room.seat, !!entry && entry.status !== "waiting"); announce(); heartbeat(); } catch (e) { console.warn(e); } }
@@ -313,20 +333,22 @@ function render() {
     if (host) li.className = "host"; else if (!presence[p.id]) li.className = "offline";
     const name = document.createElement("span");
     name.textContent = (host ? "👑 " : presence[p.id] ? "🟢 " : "⚫ ") + p.nickname + (p.id === uid ? " (you)" : "");
+    if (p.id === uid) name.setAttribute("data-ja", "（あなた）");
     const racer = !!p.seat && seatsReal[p.seat] === p.id;   // a racer really holds the seat named on their entry
     const tag = document.createElement("span");
     tag.className = "tag" + (host ? " tag-host" : racer ? "" : " tag-spec");
-    tag.textContent = host ? (racer ? "HOST · RACER" : "HOST") : racer ? "RACER" : "SPECTATOR";
+    setT(tag, host ? (racer ? "tagHostRacer" : "tagHost") : racer ? "tagRacer" : "tagSpectator");
     li.append(name, tag); ul.append(li);
   }
   const racers = Object.keys(seatsReal).length;
   $("lobby-name").textContent = (entry && entry.name) || room.name || "Room";
   $("count").textContent = `${racers}/${MAX}`;
-  $("lobby-status").textContent = entry ? ({ waiting: "Waiting for players", starting: "The host is starting the game...", racing: "Race in progress", finished: "Race finished" }[entry.status] || "") : "";
-  $("wait").textContent = racers < MAX ? "Waiting for players..." : "All 35 seats are taken!";
+  const st = entry && ({ waiting: "statusWaiting", starting: "hostStarting", racing: "statusRace", finished: "statusDone" }[entry.status]);
+  if (st) setT($("lobby-status"), st); else { $("lobby-status").textContent = ""; $("lobby-status").removeAttribute("data-ja"); }
+  setT($("wait"), racers < MAX ? "waitingFor" : "seatsFull");
   const iAmHost = hostUid === uid && !!members[uid];
   $("host-tools").hidden = !iAmHost; $("setup-view").hidden = iAmHost;
-  $("btn-hostplays").textContent = "Host Join Race: " + (members[uid] && members[uid].seat && seatsReal[members[uid].seat] === uid ? "ON" : "OFF");
+  { const on = !!(members[uid] && members[uid].seat && seatsReal[members[uid].seat] === uid); const x = t("hostJoin", { state: on ? "ON" : "OFF" }); setX($("btn-hostplays"), x); }
   $("btn-hostplays").disabled = !(entry && entry.status === "waiting");
   renderPlayersExtras(list, iAmHost);
   renderSetup(iAmHost, racers);
@@ -354,12 +376,12 @@ function render() {
 const unitsOf = () => sel.units.slice().sort((a, b) => a - b);
 const gradeName = g => (GRADES.find(x => x[0] === g) || [g, g])[1];
 const unitsText = u => "Unit" + (u.length > 1 ? "s " : " ") + u.join(", ");
-function setupText(c) { const u = Object.values(c.units || {}).map(Number).sort((a, b) => a - b); return `${gradeName(c.grade)} · ${unitsText(u)} · ${V.modeLabel(c.mode)} · ${V.TOTAL} questions`; }
+function setupText(c) { const u = Object.values(c.units || {}).map(Number).sort((a, b) => a - b); const base = `${gradeName(c.grade)} · ${unitsText(u)} · `; return { en: `${base}${V.modeLabel(c.mode)} · ${V.TOTAL} questions`, ja: `${base}${MODE_JA[c.mode] || V.modeLabel(c.mode)} · ${questionsJa(V.TOTAL)}` }; }
 
 // Fill the dropdowns once.
 (function initSetupControls() {
   const g = $("s-grade"); for (const [id, label] of GRADES) g.append(new Option(label, id));
-  const m = $("s-mode"); for (const x of V.MODES) { const o = new Option(x.label + (x.available ? "" : " — coming soon"), x.id); o.disabled = !x.available; m.append(o); }
+  const m = $("s-mode"); for (const x of V.MODES) { const o = new Option((x.available ? x.label + " / " + (MODE_JA[x.id] || "") : x.label + " — " + t("comingSoon").en + " / " + t("comingSoon").ja), x.id); o.disabled = !x.available; m.append(o); }
   $("s-total").textContent = String(V.TOTAL);
   g.onchange = () => { sel.grade = g.value; sel.units = []; hostEdited(); };
   m.onchange = () => { sel.mode = m.value; hostEdited(); };
@@ -383,7 +405,7 @@ function currentPool() { return vocab && sel.units.length ? V.buildPool(vocab, s
 function renderSetup(iAmHost, racers) {
   if (!iAmHost) {
     const st = entry && entry.status;
-    $("setup-text").textContent = st === "starting" ? "The host is starting the game..." : setupData && setupData.units ? setupText(setupData) : "The host is choosing a game...";
+    if (st === "starting") setT($("setup-text"), "hostStarting"); else if (setupData && setupData.units) setX($("setup-text"), setupText(setupData)); else setT($("setup-text"), "hostChoosing");
     return;
   }
   const waiting = !!entry && entry.status === "waiting";
@@ -400,42 +422,43 @@ function renderSetup(iAmHost, racers) {
       cb.disabled = !waiting || (!on && sel.units.length >= V.MAX_UNITS);
       if (cb.disabled && !on) lab.className = "off";
       cb.onchange = () => { sel.units = cb.checked ? [...new Set([...sel.units, u.number])] : sel.units.filter(x => x !== u.number); hostEdited(); };
-      const t = document.createElement("span"); t.textContent = "Unit " + u.number; const sm = document.createElement("small"); sm.textContent = u.count + " words"; t.append(sm);
-      lab.append(cb, t); box.append(lab);
+      const tt = document.createElement("span"); tt.textContent = "Unit " + u.number; const sm = document.createElement("small"); setT(sm, "unitWords", { n: u.count }); tt.append(sm);
+      lab.append(cb, tt); box.append(lab);
     }
   }
   const msg = $("s-pool"); let ok = false;
-  if (vocabErr) { msg.className = "pool bad"; msg.textContent = "❌ Couldn't load the word list. Check your connection; it will try again."; }
-  else if (!vocab) { msg.className = "pool"; msg.textContent = "Loading the word list..."; }
-  else if (!sel.units.length) { msg.className = "pool"; msg.textContent = "Choose at least one unit (up to " + V.MAX_UNITS + ")."; }
-  else if (n < V.TOTAL) { msg.className = "pool bad"; msg.textContent = `❌ Only ${n} usable words in your selection, but ${V.TOTAL} are needed. Please select another unit.`; }
-  else if (racers < MIN_RACERS) { msg.className = "pool"; msg.textContent = `✅ ${n} words available. Waiting for at least ${MIN_RACERS} racer${MIN_RACERS > 1 ? "s" : ""}.`; }
-  else { ok = true; msg.className = "pool ok"; msg.textContent = `✅ ${n} words available (${V.TOTAL} are used per race). ${racers} racer${racers > 1 ? "s" : ""} ready.`; }
+  if (vocabErr) { msg.className = "pool bad"; setT(msg, "poolError"); }
+  else if (!vocab) { msg.className = "pool"; setT(msg, "poolLoading"); }
+  else if (!sel.units.length) { msg.className = "pool"; setT(msg, "poolNone"); }
+  else if (n < V.TOTAL) { msg.className = "pool bad"; setT(msg, "poolShort", { n }); }
+  else if (racers < MIN_RACERS) { msg.className = "pool"; setT(msg, "poolWait", { n, m: MIN_RACERS }); }
+  else { ok = true; msg.className = "pool ok"; setT(msg, "poolOk", { n, r: racers }); }
   const mode = V.MODES.find(x => x.id === sel.mode);
   $("btn-start").disabled = !(ok && waiting && !starting && online && mode && mode.available);
-  $("btn-start").textContent = starting ? "STARTING..." : "START GAME";
+  setT($("btn-start"), starting ? "starting" : "start");
 }
 
 /* --------------------------------------------------------------------- START */
-$("btn-start").onclick = () => work(async () => {
+$("btn-start").onclick = () => work(startFlow);
+async function startFlow() {   // used by START GAME and by PLAY AGAIN
   if (!room || hostUid !== uid || !entry || entry.status !== "waiting") return;
-  if (!vocab) return toast("The word list isn't loaded yet.");
-  const mode = V.MODES.find(x => x.id === sel.mode); if (!mode || !mode.available) return toast("That game mode is coming soon.");
+  if (!vocab) return toast("wordsNotLoaded");
+  const mode = V.MODES.find(x => x.id === sel.mode); if (!mode || !mode.available) return toast("modeSoon");
   const id = room.id, u = unitsOf();
   const pool = V.buildPool(vocab, sel.grade, u, sel.mode);
-  if (!u.length || u.length > V.MAX_UNITS) return toast("Choose 1 to " + V.MAX_UNITS + " units.");
-  if (pool.words.length < V.TOTAL) return toast(`Only ${pool.words.length} usable words. Please select another unit.`);
+  if (!u.length || u.length > V.MAX_UNITS) return toast("chooseUnits");
+  if (pool.words.length < V.TOTAL) return toast("tooFewWords", { n: pool.words.length });
   starting = true; setupKey = ""; render();
-  const back = async msg => { try { await set(ref(db, `liveRoomList/${id}/status`), "waiting"); } catch {} starting = false; setupKey = ""; render(); if (msg) toast(msg); };
+  const back = async (key, vars) => { try { await set(ref(db, `liveRoomList/${id}/status`), "waiting"); } catch {} starting = false; setupKey = ""; render(); if (key) toast(key, vars); };
   try {
     clearTimeout(setupT); await saveSetup();
     try { await set(ref(db, `liveRoomList/${id}/status`), "starting"); }       // closes the room to new joins
-    catch (e) { starting = false; setupKey = ""; render(); if (!denied(e)) throw e; return toast("Couldn't start: the room changed. Please try again."); }
+    catch (e) { starting = false; setupKey = ""; render(); if (!denied(e)) throw e; return toast("startChanged"); }
     // read the seats AFTER the room is closed, so nobody can slip in between
     const [sSnap, mSnap] = await Promise.all([get(ref(db, `liveRooms/${id}/seats`)), get(ref(db, `liveRooms/${id}/members`))]);
     const seats = sSnap.val() || {}, mem = mSnap.val() || {}, roster = {};
     for (const [n, who] of Object.entries(seats)) { const m = mem[who]; if (m && m.seat === n) roster[who] = { nickname: m.nickname, seat: n }; }
-    if (Object.keys(roster).length < MIN_RACERS) return back("Nobody is racing yet. Wait for at least " + MIN_RACERS + " racer(s).");
+    if (Object.keys(roster).length < MIN_RACERS) return back("nobodyRacing", { m: MIN_RACERS });
     const seed = V.randomSeed(), targets = V.pickTargets(pool.words, seed, V.TOTAL), fp = await V.fingerprint(targets);
     await update(ref(db), {
       [`liveRooms/${id}/race`]: {
@@ -446,29 +469,52 @@ $("btn-start").onclick = () => work(async () => {
       [`liveRoomList/${id}/status`]: "racing"
     });
     starting = false; setupKey = "";
-  } catch (e) { console.error(e); await back("Couldn't start the game. Please try again."); }
+  } catch (e) { console.error(e); await back("startFail"); }
+}
+// PLAY AGAIN: back to the lobby (the same clean-up as BACK TO LOBBY), then the same START with the same settings.
+$("btn-again").onclick = () => work(async () => {
+  if (!room || hostUid !== uid || !entry || entry.status !== "finished" || !raceData || !raceData.config) return;
+  const c = raceData.config, m = V.MODES.find(x => x.id === c.mode);
+  sel = { grade: c.grade, units: Object.values(c.units).map(Number), mode: m && m.available ? m.id : V.MODES[0].id }; selDirty = true;
+  await update(ref(db), returnWrites(room.id));
+  for (let i = 0; i < 60 && !(entry && entry.status === "waiting" && !raceData); i++) await sleep(100);
+  if (!(entry && entry.status === "waiting")) return toast("playAgainFail");
+  await startFlow();
 });
 
 /* ------------------------------------------------------- remove / end race */
 const removeWrites = (id, who) => {
-  const w = { [`liveRooms/${id}/members/${who}`]: null };   // (people being removed have no presence marker, so there is nothing to clear there)
+  const w = { [`liveRooms/${id}/members/${who}`]: null };
+  if (presence[who]) w[`liveRooms/${id}/presence/${who}`] = null;   // only the host may clear a marker; the host-away return only removes people who have none
   const seat = members[who] && members[who].seat;
   if (seat) { if (seatsReal[seat] === who) w[`liveRooms/${id}/seats/${seat}`] = null; w[`liveRoomList/${id}/seats/${seat}`] = null; }
   return w;
 };
-function removeStudent(who) { return work(async () => { if (room && hostUid === uid && who !== uid && !presence[who]) await update(ref(db), removeWrites(room.id, who)); }); }
+function removeStudent(who) { return work(async () => { if (room && hostUid === uid && who !== uid && members[who]) await update(ref(db), removeWrites(room.id, who)); }); }
+// Remove asks first.
+let removeWho = null;
+function askRemove(who) {
+  if (!room || hostUid !== uid || who === uid || !members[who]) return;
+  removeWho = who; const name = members[who].nickname;
+  setT($("modal-q"), "confirmQ", { name }); setT($("modal-note"), "confirmNote", { name });
+  $("modal").hidden = false; $("modal-no").focus();
+}
+const closeModal = () => { removeWho = null; $("modal").hidden = true; };
+$("modal-no").onclick = closeModal;
+$("modal").addEventListener("click", ev => { if (ev.target === $("modal")) closeModal(); });
+$("modal-yes").onclick = () => { const who = removeWho; closeModal(); if (who) removeStudent(who); };
 $("btn-end").onclick = () => work(async () => {
   if (!room || hostUid !== uid) return;
   await update(ref(db), returnWrites(room.id));   // dropped racers are cleared now
 });
-function renderPlayersExtras(list, iAmHost) {   // "Remove" for students who dropped (grey dot), lobby list
+function renderPlayersExtras(list, iAmHost) {   // host: a "Remove" button next to every other person (asks first)
   if (!iAmHost) return;
   [...$("players").children].forEach((li, i) => {
-    const p = list[i]; if (!p || p.id === uid || presence[p.id]) return;
+    const p = list[i]; if (!p || p.id === uid) return;
     li.append(removeButton(p.id));
   });
 }
-function removeButton(who) { const b = document.createElement("button"); b.type = "button"; b.className = "small kick"; b.textContent = "Remove"; b.onclick = () => removeStudent(who); return b; }
+function removeButton(who) { const b = document.createElement("button"); b.type = "button"; b.className = "small kick"; setT(b, "remove"); b.onclick = () => askRemove(who); return b; }
 
 /* ------------------------------------------------------------------ race screen */
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -487,14 +533,14 @@ function routeScreens(iAmHost) {
     if (!raceTick) raceTick = setInterval(tick, 250);
   } else {
     if ($("lobby").hidden) show("lobby");
-    clearInterval(raceTick); raceTick = null; clearTimeout(returnT); returnT = null; returnKey = ""; eng = null;
+    clearInterval(raceTick); raceTick = null; clearTimeout(returnT); returnT = null; returnKey = ""; eng = null; document.body.classList.remove("projector");
   }
 }
 const raceStartMs = () => raceData.startAt + raceData.config.countdownMs;
 function tick() {
   if (!room || !raceData || !raceData.config) return;
   const left = raceStartMs() - serverNow();
-  $("race-count").textContent = entry && entry.status === "finished" ? "🏁 Race finished" : left > 0 ? `Starting in ${Math.ceil(left / 1000)}...` : "GO!";
+  if (entry && entry.status === "finished") setT($("race-count"), "raceOver"); else if (left > 0) setT($("race-count"), "startsIn", { n: Math.ceil(left / 1000) }); else setT($("race-count"), "go");
   if (left <= 0) startEngine();
 }
 
@@ -515,33 +561,36 @@ const fmtTime = ms => { const s = Math.max(0, ms) / 1000; return `${Math.floor(s
 
 function renderRace(iAmHost) {
   const c = raceData.config, over = entry.status === "finished", racer = !!(raceData.roster && raceData.roster[uid]);
-  $("race-info").textContent = setupText(c);
-  $("btn-end").hidden = !iAmHost; $("btn-end").textContent = over ? "BACK TO LOBBY" : "END RACE";
+  setX($("race-info"), setupText(c));
+  $("btn-end").hidden = !iAmHost; setT($("btn-end"), over ? "backLobby" : "endRace");
+  $("btn-again").hidden = !(iAmHost && over);
+  $("btn-proj").hidden = !(iAmHost || !racer); setT($("btn-proj"), document.body.classList.contains("projector") ? "projectorOff" : "projector");
   $("spectator-note").hidden = racer;
+  $("results").hidden = !over; $("live").hidden = over;
   tick();
   // does MY copy of the vocabulary give the host's exact 40 words?
   const key = c.fingerprint + (vocab ? "v" : "n");
   if (key !== verifyKey) {
     verifyKey = key; const v = $("race-verify"); raceWords = null;
-    if (!vocab) v.textContent = "Checking the word list...";
+    if (!vocab) setT(v, "checking");
     else V.verifyConfig(vocab, c).then(r => {
       if (verifyKey !== key) return;
-      if (r.status === "ok") { raceWords = r.words; v.textContent = "✅ Your word list matches the host's (40 words verified)."; startEngine(); }
-      else v.textContent = "⚠️ Your word list doesn't match the host's (" + r.reason + "). Please reload the page.";
-    }).catch(() => { v.textContent = "⚠️ Couldn't check the word list."; });
+      if (r.status === "ok") { raceWords = r.words; setT(v, "verifyOk"); startEngine(); if (room) render(); }
+      else setT(v, "verifyBad");
+    }).catch(() => { setT(v, "verifyFail"); });
   }
-  renderBoard(racer, over);
+  if (over) renderResults(racer); else renderBoard(racer);
   renderPlayMode(racer, over);
   maybeFinishRace(racer);
   maybeReturnToLobby(iAmHost, over);
 }
 
-function renderBoard(racer, over) {
-  const rows = ranking(), ul = $("board"); ul.replaceChildren();
-  $("race-n").textContent = String(rows.length);
+const iAmHostNow = () => hostUid === uid && !!members[uid];
+function fillBoard(ul, rows, { trim = false, racer = false } = {}) {
+  ul.replaceChildren();
   let shown = rows;
   const meIdx = rows.findIndex(r => r.id === uid);
-  if (racer && !over && rows.length > 10 && meIdx >= 0) {   // racers see the top 5, themselves and their neighbours
+  if (trim && racer && rows.length > 10 && meIdx >= 0 && !document.body.classList.contains("projector")) {   // racers see the top 5, themselves and their neighbours
     const keep = new Set([...Array(5).keys(), meIdx - 1, meIdx, meIdx + 1].filter(i => i >= 0 && i < rows.length));
     shown = [...keep].sort((a, b) => a - b).map(i => rows[i]);
   }
@@ -552,18 +601,96 @@ function renderBoard(racer, over) {
     prev = idx;
     const li = document.createElement("li"), here = !!presence[r.id], member = !!members[r.id];
     li.className = (r.id === uid ? "me " : "") + (here ? "" : "off");
-    const place = document.createElement("span"); place.textContent = r.finishedAt != null ? medal(r.place) : "";
+    const place = document.createElement("span"); place.className = "rk"; place.textContent = r.finishedAt != null ? medal(r.place) : "";
     const name = document.createElement("span");
-    name.textContent = (r.id === hostUid ? "👑 " : here ? "🟢 " : "⚫ ") + r.nickname + (r.id === uid ? " (you)" : "") + (here ? "" : member ? " — Disconnected" : " — Removed");
+    const state = here ? null : member ? t("offline") : t("removed");
+    name.textContent = (r.id === hostUid ? "👑 " : here ? "🟢 " : "⚫ ") + r.nickname + (r.id === uid ? " (you)" : "") + (state ? " — " + state.en : "");
+    const ja = [r.id === uid ? "（あなた）" : "", state ? state.ja : ""].filter(Boolean).join(" ");
+    if (ja) name.setAttribute("data-ja", ja);
     const stat = document.createElement("span");
     stat.textContent = r.finishedAt != null ? "🏁 " + fmtTime(r.finishedAt - raceStartMs()) : `${r.solved}/${V.TOTAL}`;
     const bar = document.createElement("div"); bar.className = "bar"; const fill = document.createElement("i"); fill.style.width = Math.round(100 * r.solved / V.TOTAL) + "%"; bar.append(fill);
     li.append(place, name, stat, bar);
-    if (iAmHostNow() && member && !here && r.id !== uid) li.append(removeButton(r.id));
+    if (trim && iAmHostNow() && member && r.id !== uid) li.append(removeButton(r.id));   // host: Remove (asks first)
     ul.append(li);
   }
 }
-const iAmHostNow = () => hostUid === uid && !!members[uid];
+function renderBoard(racer) {
+  const rows = ranking();
+  $("race-n").textContent = String(rows.length);
+  fillBoard($("board"), rows, { trim: true, racer });
+}
+
+/* ---- results screen (race finished) ---- */
+function renderResults(racer) {
+  const rows = ranking(), done = rows.filter(r => r.finishedAt != null);
+  // podium: 2nd, 1st, 3rd
+  const pod = $("podium"); pod.replaceChildren(); pod.hidden = done.length === 0;
+  for (const k of [1, 0, 2]) {
+    const r = done[k]; if (!r) continue;
+    const d = document.createElement("div"); d.className = "slot s" + (k + 1);
+    const m = document.createElement("span"); m.className = "medal"; m.textContent = medal(k + 1);
+    const n = document.createElement("span"); n.textContent = r.nickname;
+    const tm = document.createElement("small"); tm.textContent = fmtTime(r.finishedAt - raceStartMs());
+    d.append(m, n, tm); pod.append(d);
+  }
+  const mine = rows.find(r => r.id === uid);
+  $("my-result").hidden = !(racer && mine);
+  if (racer && mine) {
+    if (mine.finishedAt != null) setT($("my-result-text"), "youCame", { place: ordinalEn(mine.place), n: mine.place, time: fmtTime(mine.finishedAt - raceStartMs()) });
+    else setT($("my-result-text"), "dnf", { s: mine.solved });
+  }
+  fillBoard($("rank-list"), rows);
+  renderReview(racer);
+}
+function renderReview(racer) {
+  $("review").hidden = !(racer && raceWords);
+  if ($("review").hidden) return;
+  const rv = reviewState(), wrong = [...rv.wrong].sort((a, b) => a - b), skip = [...rv.skip].filter(i => !rv.wrong.has(i)).sort((a, b) => a - b);
+  const fill = (ul, list) => { ul.replaceChildren(); for (const i of list) { const w = raceWords[i]; if (!w) continue; const li = document.createElement("li"); const a = document.createElement("span"); a.textContent = w.japanese; const b = document.createElement("b"); b.textContent = w.english; li.append(a, b); ul.append(li); } };
+  fill($("review-wrong-list"), wrong); fill($("review-skip-list"), skip);
+  $("review-wrong").hidden = !wrong.length; $("review-skip").hidden = !skip.length; $("review-none").hidden = !!(wrong.length || skip.length);
+}
+
+/* ---- Words to Review: kept on THIS device only (memory + this tab's session storage). It never goes to Firebase and never touches NH Interactive. ---- */
+function reviewState() {
+  const key = room.id + ":" + raceData.startAt;
+  if (review && review.key === key) return review;
+  review = { key, wrong: new Set(), skip: new Set() };
+  try { const o = JSON.parse(sessionStorage.getItem("nhLive_review") || "null"); if (o && o.key === key) review = { key, wrong: new Set(o.wrong || []), skip: new Set(o.skip || []) }; } catch {}
+  return review;
+}
+function noteReview(kind, i) {
+  if (!room || !raceData) return;
+  const rv = reviewState(); rv[kind].add(i);
+  try { sessionStorage.setItem("nhLive_review", JSON.stringify({ key: rv.key, wrong: [...rv.wrong], skip: [...rv.skip] })); } catch {}
+}
+
+/* ---- sound / vibration (OFF until switched on; kept only in this browser) ---- */
+const getPref = k => { try { return localStorage.getItem(k) === "1"; } catch { return false; } };
+const setPref = (k, v) => { try { localStorage.setItem(k, v ? "1" : "0"); } catch {} };
+let soundOn = getPref("nhLive_sound"), vibOn = getPref("nhLive_vibrate"), actx = null;
+function prefButtons() { setT($("btn-sound"), soundOn ? "soundOn" : "soundOff"); setT($("btn-vib"), vibOn ? "vibOn" : "vibOff"); }
+function tone(notes) {
+  try {
+    actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+    if (actx.state === "suspended") actx.resume();
+    let at = actx.currentTime;
+    for (const [f, d, type] of notes) {
+      const o = actx.createOscillator(), g = actx.createGain();
+      o.type = type || "sine"; o.frequency.value = f; g.gain.value = 0.12;
+      o.connect(g); g.connect(actx.destination); o.start(at); o.stop(at + d); at += d;
+    }
+  } catch {}
+}
+function fx(kind) {
+  if (soundOn) tone(kind === "ok" ? [[660, 0.08], [880, 0.1]] : kind === "bad" ? [[200, 0.16, "square"]] : [[523, 0.12], [659, 0.12], [784, 0.12], [1047, 0.25]]);
+  if (vibOn && navigator.vibrate) { try { navigator.vibrate(kind === "ok" ? 25 : kind === "bad" ? [60] : [100, 50, 100, 50, 200]); } catch {} }
+}
+$("btn-sound").onclick = () => { soundOn = !soundOn; setPref("nhLive_sound", soundOn); prefButtons(); if (soundOn) fx("ok"); };
+$("btn-vib").onclick = () => { vibOn = !vibOn; setPref("nhLive_vibrate", vibOn); prefButtons(); if (vibOn) fx("ok"); };
+$("btn-proj").onclick = () => { document.body.classList.toggle("projector"); if (room && entry && raceData) render(); };
+prefButtons();
 
 /* ---- the game for a racer: Japanese -> English, 4 choices ---- */
 function startEngine() {
@@ -592,18 +719,15 @@ function renderPlayMode(racer, over) {
   const playing = racer && !!eng && !over && entry.status === "racing";
   const iFinished = racer && typeof progOf(uid).finishedAt === "number";
   $("play").hidden = !(playing && eng.queue.length > 0 && !iFinished);
-  $("my-done").hidden = !(racer && (iFinished || (eng && eng.solved.size === V.TOTAL)));
-  if (!$("my-done").hidden) {
-    const r = ranking().find(x => x.id === uid);
-    $("my-done-text").textContent = over && r ? `🏁 Race finished. You came ${medal(r.place)} (${r.finishedAt != null ? fmtTime(r.finishedAt - raceStartMs()) : r.solved + "/" + V.TOTAL})` : "🎉 You finished! Waiting for the others...";
-  }
+  $("my-done").hidden = over || !(racer && (iFinished || (eng && eng.solved.size === V.TOTAL)));
+  if (!$("my-done").hidden) setT($("my-done-text"), "finishedWait");
   if (!playing || $("play").hidden) return;
   // merge answers the server already has (another tab, a retry) into the local queue
   for (const i of solvedOf(uid)) if (!eng.solved.has(i)) { eng.solved.add(i); eng.queue = eng.queue.filter(x => x !== i); }
   if (!eng.queue.length) return;
   const i = eng.queue[0], shownKey = i + "|" + [...eng.wrong].join(",") + "|" + eng.locked + "|" + eng.solved.size;
   if (eng.shown === shownKey) return; eng.shown = shownKey;
-  $("q-num").textContent = String(eng.solved.size + 1); $("q-solved").textContent = String(eng.solved.size);
+  setT($("q-label"), "question", { n: eng.solved.size + 1, s: eng.solved.size });
   $("q-word").textContent = raceWords[i].japanese;
   const box = $("q-choices"); box.replaceChildren();
   choicesFor(i).forEach((ch, k) => {
@@ -616,18 +740,20 @@ function renderPlayMode(racer, over) {
   });
   $("q-skip").disabled = eng.locked || eng.queue.length < 2;
 }
+const clearMsg = () => { $("q-msg").textContent = ""; $("q-msg").removeAttribute("data-ja"); };
 function answer(i, k) {
   if (!eng || eng.locked || eng.queue[0] !== i) return;
   if (choicesFor(i)[k].ok) {
-    eng.locked = true; $("q-msg").textContent = "✅ Correct!";
-    eng.solved.add(i); eng.pending.add(i); persistSolved(i);
+    eng.locked = true; setT($("q-msg"), "correct");
+    eng.solved.add(i); eng.pending.add(i); persistSolved(i); fx(eng.solved.size >= V.TOTAL ? "done" : "ok");
     renderPlayMode(true, false);
-    setTimeout(() => { if (!eng) return; eng.queue = eng.queue.filter(x => x !== i); eng.wrong = new Set(); eng.locked = false; $("q-msg").textContent = ""; eng.shown = ""; renderPlayMode(true, false); }, 600);
-  } else { eng.wrong.add(k); $("q-msg").textContent = "Not quite. Try again!"; eng.shown = ""; renderPlayMode(true, false); }
+    setTimeout(() => { if (!eng) return; eng.queue = eng.queue.filter(x => x !== i); eng.wrong = new Set(); eng.locked = false; clearMsg(); eng.shown = ""; renderPlayMode(true, false); }, 600);
+  } else { eng.wrong.add(k); noteReview("wrong", i); fx("bad"); setT($("q-msg"), "tryAgain"); eng.shown = ""; renderPlayMode(true, false); }
 }
 $("q-skip").onclick = () => {   // SKIP: the question goes to the back of my queue and still has to be answered
   if (!eng || eng.locked || eng.queue.length < 2) return;
-  eng.queue.push(eng.queue.shift()); eng.wrong = new Set(); $("q-msg").textContent = ""; eng.shown = ""; renderPlayMode(true, false);
+  noteReview("skip", eng.queue[0]);
+  eng.queue.push(eng.queue.shift()); eng.wrong = new Set(); clearMsg(); eng.shown = ""; renderPlayMode(true, false);
 };
 // Save one correct answer. One write at a time, spaced out (the rules enforce a pause), retried if it fails.
 function persistSolved(i) {
@@ -668,11 +794,11 @@ function returnWrites(id) {   // race removed, room back to waiting, people who 
 function maybeReturnToLobby(iAmHost, over) {
   const note = $("return-note");
   const hostHere = !!hostUid && !!presence[hostUid] && !!members[hostUid];
-  if (!over || hostHere || !members[uid] || !presence[uid]) { clearTimeout(returnT); returnT = null; returnKey = ""; note.textContent = ""; return; }
+  if (!over || hostHere || !members[uid] || !presence[uid]) { clearTimeout(returnT); returnT = null; returnKey = ""; note.textContent = ""; note.removeAttribute("data-ja"); return; }
   const here = Object.entries(members).filter(([id]) => presence[id]).map(([id, m]) => ({ id, joinedAt: m.joinedAt || 0 })).sort((a, b) => a.joinedAt - b.joinedAt || (a.id < b.id ? -1 : 1));
   const rank = Math.max(0, here.findIndex(p => p.id === uid)), delay = 15000 + rank * 4000;
   const key = room.id + ":" + raceData.startAt + ":" + rank;
-  note.textContent = "The host is away. The room returns to the lobby soon, and the next player in order becomes host.";
+  setT(note, "hostAway");
   if (returnKey === key) return; returnKey = key; clearTimeout(returnT);
   returnT = setTimeout(async () => {
     returnT = null;
@@ -704,13 +830,13 @@ $("btn-hostplays").onclick = () => work(async () => {
         room.seat = String(n); await arm(id, String(n)); return;
       } catch (e) { if (!denied(e)) throw e; }
     }
-    toast("All 35 racer seats are taken, so the host can't race.");
+    toast("hostSeatsFull");
   }
 });
 
 /* -------------------------------------------------------------------- leave */
 function leaveLocal(msg) {
-  detach(); room = null; members = {}; hostUid = null; seatsReal = {}; presence = {}; entry = null; setupData = null; raceData = null; starting = false;
+  detach(); room = null; members = {}; hostUid = null; seatsReal = {}; presence = {}; entry = null; setupData = null; raceData = null; starting = false; review = null; wasMember = false; closeModal(); document.body.classList.remove("projector");
   show("browser"); startBrowser(); if (msg) toast(msg);
 }
 async function leave() {
@@ -727,7 +853,7 @@ $("btn-leave").onclick = leave;
 $("btn-leave2").onclick = leave;
 $("btn-pw").onclick = () => {
   if (!room || !room.pw) return;
-  pwShown = !pwShown; $("created-pw").textContent = pwShown ? room.pw : "•".repeat(room.pw.length); $("btn-pw").textContent = pwShown ? "Hide" : "Show";
+  pwShown = !pwShown; $("created-pw").textContent = pwShown ? room.pw : "•".repeat(room.pw.length); setT($("btn-pw"), pwShown ? "hide" : "show");
 };
 
 init();
