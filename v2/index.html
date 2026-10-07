@@ -1,257 +1,118 @@
-{
-  "rules": {
-    ".read": false,
-    ".write": false,
-    "rooms": {
-      "$code": {
-        ".write": "auth != null && ( (!data.exists() && newData.hasChildren(['hostUid', 'createdAt', 'status', 'secret', 'players']) && newData.child('hostUid').val() === auth.uid && newData.child('players').hasChild('p1') && !newData.child('players').hasChild('p2') && !newData.child('players').hasChild('p3') && !newData.child('players').hasChild('p4') && !newData.child('players').hasChild('p5') && !newData.child('players').hasChild('p6') && newData.child('players').child('p1').child('uid').val() === auth.uid && newData.child('players').child('p1').child('proof').val() === newData.child('secret').child('passwordHash').val()) || (data.exists() && !newData.exists() && !data.child('players').exists()) )",
-        ".validate": "$code.matches(/^[A-HJKMNP-Z2-9]{6}$/) && newData.hasChildren(['hostUid', 'createdAt', 'status', 'secret'])",
-        "hostUid": {
-          ".read": "auth != null && (data.parent().child('players').child('p1').child('uid').val() === auth.uid || data.parent().child('players').child('p2').child('uid').val() === auth.uid || data.parent().child('players').child('p3').child('uid').val() === auth.uid || data.parent().child('players').child('p4').child('uid').val() === auth.uid || data.parent().child('players').child('p5').child('uid').val() === auth.uid || data.parent().child('players').child('p6').child('uid').val() === auth.uid)",
-          ".write": "auth != null && data.exists() && newData.val() === auth.uid && (data.parent().child('players').child('p1').child('uid').val() === auth.uid || data.parent().child('players').child('p2').child('uid').val() === auth.uid || data.parent().child('players').child('p3').child('uid').val() === auth.uid || data.parent().child('players').child('p4').child('uid').val() === auth.uid || data.parent().child('players').child('p5').child('uid').val() === auth.uid || data.parent().child('players').child('p6').child('uid').val() === auth.uid) && data.parent().child('players').child('p1').child('uid').val() !== data.val() && data.parent().child('players').child('p2').child('uid').val() !== data.val() && data.parent().child('players').child('p3').child('uid').val() !== data.val() && data.parent().child('players').child('p4').child('uid').val() !== data.val() && data.parent().child('players').child('p5').child('uid').val() !== data.val() && data.parent().child('players').child('p6').child('uid').val() !== data.val()",
-          ".validate": "newData.isString() && newData.val().length <= 128"
-        },
-        "createdAt": {
-          ".read": "auth != null && (data.parent().child('players').child('p1').child('uid').val() === auth.uid || data.parent().child('players').child('p2').child('uid').val() === auth.uid || data.parent().child('players').child('p3').child('uid').val() === auth.uid || data.parent().child('players').child('p4').child('uid').val() === auth.uid || data.parent().child('players').child('p5').child('uid').val() === auth.uid || data.parent().child('players').child('p6').child('uid').val() === auth.uid)",
-          ".validate": "newData.isNumber() && newData.val() === now"
-        },
-        "status": {
-          ".read": "auth != null && (data.parent().child('players').child('p1').child('uid').val() === auth.uid || data.parent().child('players').child('p2').child('uid').val() === auth.uid || data.parent().child('players').child('p3').child('uid').val() === auth.uid || data.parent().child('players').child('p4').child('uid').val() === auth.uid || data.parent().child('players').child('p5').child('uid').val() === auth.uid || data.parent().child('players').child('p6').child('uid').val() === auth.uid)",
-          ".validate": "newData.isString() && newData.val() === 'waiting'"
-        },
-        "secret": {
-          ".validate": "newData.hasChild('passwordHash')",
-          "passwordHash": {
-            ".validate": "newData.isString() && newData.val().matches(/^[a-f0-9]{64}$/)"
-          },
-          "$other": {
-            ".validate": false
-          }
-        },
-        "players": {
-          ".read": "auth != null && (data.child('p1').child('uid').val() === auth.uid || data.child('p2').child('uid').val() === auth.uid || data.child('p3').child('uid').val() === auth.uid || data.child('p4').child('uid').val() === auth.uid || data.child('p5').child('uid').val() === auth.uid || data.child('p6').child('uid').val() === auth.uid)",
-          "$slot": {
-            ".write": "auth != null && ( (!newData.exists() && data.child('uid').val() === auth.uid) || (!data.exists() && newData.child('uid').val() === auth.uid && root.child('rooms').child($code).child('hostUid').exists() && newData.child('proof').val() === root.child('rooms').child($code).child('secret').child('passwordHash').val() && root.child('rooms').child($code).child('players').child('p1').child('uid').val() !== auth.uid && root.child('rooms').child($code).child('players').child('p2').child('uid').val() !== auth.uid && root.child('rooms').child($code).child('players').child('p3').child('uid').val() !== auth.uid && root.child('rooms').child($code).child('players').child('p4').child('uid').val() !== auth.uid && root.child('rooms').child($code).child('players').child('p5').child('uid').val() !== auth.uid && root.child('rooms').child($code).child('players').child('p6').child('uid').val() !== auth.uid) )",
-            ".validate": "$slot.matches(/^p[1-6]$/) && newData.hasChildren(['uid', 'nickname', 'joinedAt', 'proof'])",
-            "uid": {
-              ".validate": "newData.isString() && newData.val() === auth.uid"
-            },
-            "nickname": {
-              ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 20"
-            },
-            "joinedAt": {
-              ".validate": "newData.isNumber() && newData.val() === now"
-            },
-            "proof": {
-              ".validate": "newData.isString() && newData.val().matches(/^[a-f0-9]{64}$/)"
-            },
-            "$other": {
-              ".validate": false
-            }
-          }
-        },
-        "$other": {
-          ".validate": false
-        }
-      }
-    },
-    "liveRoomList": {
-      ".read": "auth != null",
-      "$room": {
-        ".validate": "$room.matches(/^[A-HJKMNP-Z2-9]{6}$/) && newData.hasChildren(['name','hostName','locked','status','createdAt','heartbeatAt'])",
-        ".write": "auth != null && ( ( !data.exists() && newData.exists() && !root.child('liveRooms').child($room).exists() && newData.parent().parent().child('liveRooms').child($room).child('hostUid').val() === auth.uid && newData.child('status').val() === 'waiting' && newData.child('locked').val() === newData.parent().parent().child('liveRooms').child($room).child('secret').exists() && newData.child('hostName').val() === newData.parent().parent().child('liveRooms').child($room).child('members').child(auth.uid).child('nickname').val() && newData.child('seats').child('1').val() === true ) || ( data.exists() && !newData.exists() && ( data.child('heartbeatAt').val() < now - 600000 || !root.child('liveRooms').child($room).child('members').exists() ) ) )",
-        "name": {
-          ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 30"
-        },
-        "locked": {
-          ".validate": "newData.isBoolean()"
-        },
-        "createdAt": {
-          ".validate": "newData.isNumber() && newData.val() === now"
-        },
-        "hostName": {
-          ".write": "auth != null && data.exists() && newData.exists() && root.child('liveRooms').child($room).child('hostUid').val() === auth.uid && root.child('liveRooms').child($room).child('members').child(auth.uid).exists()",
-          ".validate": "newData.isString() && newData.val() === newData.parent().parent().parent().child('liveRooms').child($room).child('members').child(auth.uid).child('nickname').val()"
-        },
-        "status": {
-          ".write": "auth != null && data.exists() && newData.exists() && root.child('liveRooms').child($room).child('hostUid').val() === auth.uid && root.child('liveRooms').child($room).child('members').child(auth.uid).exists() && ( ( data.val() === newData.val() ) || ( data.val() === 'waiting' && newData.val() === 'starting' ) || ( data.val() === 'starting' && newData.val() === 'waiting' ) || ( data.val() === 'starting' && newData.val() === 'racing' && newData.parent().parent().parent().child('liveRooms').child($room).child('race').exists() ) || ( data.val() === 'racing' && newData.val() === 'waiting' && !newData.parent().parent().parent().child('liveRooms').child($room).child('race').exists() ) || ( data.val() === 'racing' && newData.val() === 'finished' ) || ( data.val() === 'finished' && newData.val() === 'waiting' && !newData.parent().parent().parent().child('liveRooms').child($room).child('race').exists() ) )",
-          ".validate": "newData.isString() && (newData.val() === 'waiting' || newData.val() === 'starting' || newData.val() === 'racing' || newData.val() === 'finished')"
-        },
-        "heartbeatAt": {
-          ".write": "auth != null && data.exists() && newData.exists() && root.child('liveRooms').child($room).child('members').child(auth.uid).exists() && now - data.val() >= 10000",
-          ".validate": "newData.isNumber() && newData.val() === now"
-        },
-        "seats": {
-          "$n": {
-            ".validate": "$n.matches(/^([1-9]|[12][0-9]|3[0-5])$/) && newData.val() === true",
-            ".write": "auth != null && ( ( !data.exists() && newData.exists() && ( root.child('liveRooms').child($room).child('seats').child($n).val() === auth.uid || newData.parent().parent().parent().parent().child('liveRooms').child($room).child('seats').child($n).val() === auth.uid ) ) || ( !newData.exists() && ( !data.exists() || !root.child('liveRooms').child($room).child('seats').child($n).exists() || root.child('liveRooms').child($room).child('seats').child($n).val() === auth.uid || root.child('liveRooms').child($room).child('hostUid').val() === auth.uid && root.child('liveRooms').child($room).child('members').child(auth.uid).exists() ) ) )"
-          }
-        },
-        "$other": {
-          ".validate": false
-        }
-      }
-    },
-    "liveRooms": {
-      "$room": {
-        ".validate": "$room.matches(/^[A-HJKMNP-Z2-9]{6}$/) && newData.hasChildren(['hostUid','createdAt'])",
-        ".write": "auth != null && ( ( !data.exists() && newData.exists() && !root.child('liveRoomList').child($room).exists() && newData.child('hostUid').val() === auth.uid && newData.child('members').child(auth.uid).exists() && newData.child('members').child(auth.uid).child('seat').val() === '1' && newData.child('seats').child('1').val() === auth.uid && ( !newData.child('secret').exists() || newData.child('members').child(auth.uid).child('proof').val() === newData.child('secret').child('passwordHash').val() ) && ( !newData.child('members').child(auth.uid).child('proof').exists() || newData.child('secret').exists() ) ) || ( data.exists() && !newData.exists() && ( !data.child('members').exists() || root.child('liveRoomList').child($room).child('heartbeatAt').val() < now - 600000 ) ) )",
-        "hostUid": {
-          ".read": "auth != null && data.parent().child('members').child(auth.uid).exists()",
-          ".write": "auth != null && data.exists() && newData.val() === auth.uid && data.parent().child('members').child(auth.uid).exists() && !data.parent().child('members').child(data.val()).exists()",
-          ".validate": "newData.isString() && newData.val().length <= 128"
-        },
-        "createdAt": {
-          ".read": "auth != null && data.parent().child('members').child(auth.uid).exists()",
-          ".validate": "newData.isNumber() && newData.val() === now"
-        },
-        "secret": {
-          ".validate": "newData.hasChild('passwordHash')",
-          "passwordHash": {
-            ".validate": "newData.isString() && newData.val().matches(/^[a-f0-9]{64}$/)"
-          },
-          "$other": {
-            ".validate": false
-          }
-        },
-        "members": {
-          ".read": "auth != null && data.child(auth.uid).exists()",
-          "$uid": {
-            ".write": "auth != null && ( ( !newData.exists() && root.child('liveRooms').child($room).child('hostUid').val() === auth.uid && root.child('liveRooms').child($room).child('members').child(auth.uid).exists() ) || ( $uid === auth.uid && ( ( !data.exists() && newData.exists() && root.child('liveRoomList').child($room).child('status').val() === 'waiting' && root.child('liveRooms').child($room).child('hostUid').exists() && ( !root.child('liveRooms').child($room).child('secret').child('passwordHash').exists() || newData.child('proof').val() === root.child('liveRooms').child($room).child('secret').child('passwordHash').val() ) && ( ( newData.child('seat').exists() && newData.parent().parent().child('seats').child(newData.child('seat').val()).val() === auth.uid )   || ( !newData.child('seat').exists() && root.child('liveRooms').child($room).child('hostUid').val() === auth.uid ) ) ) || ( !newData.exists() ) || ( data.exists() && newData.exists()   && newData.child('nickname').val() === data.child('nickname').val()   && newData.child('joinedAt').val() === data.child('joinedAt').val()   && newData.child('proof').val() === data.child('proof').val()   && ( ( !data.child('seat').exists() && !newData.child('seat').exists() )     || ( data.child('seat').exists() && newData.child('seat').val() === data.child('seat').val() )     || ( data.child('seat').exists() && !newData.child('seat').exists() && root.child('liveRooms').child($room).child('hostUid').val() === auth.uid && !newData.parent().parent().child('seats').child(data.child('seat').val()).exists() )     || ( !data.child('seat').exists() && newData.child('seat').exists() && newData.parent().parent().child('seats').child(newData.child('seat').val()).val() === auth.uid ) ) ) ) ) )",
-            ".validate": "$uid === auth.uid && newData.hasChildren(['nickname','joinedAt','tabId']) && ( newData.child('seat').exists() || newData.parent().parent().child('hostUid').val() === $uid )",
-            "nickname": {
-              ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 20"
-            },
-            "joinedAt": {
-              ".validate": "newData.isNumber() && newData.val() === now"
-            },
-            "tabId": {
-              ".write": "auth != null && $uid === auth.uid && data.exists()",
-              ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 32"
-            },
-            "seat": {
-              ".validate": "newData.isString() && newData.val().matches(/^([1-9]|[12][0-9]|3[0-5])$/)"
-            },
-            "proof": {
-              ".validate": "newData.isString() && newData.val().matches(/^[a-f0-9]{64}$/)"
-            },
-            "$other": {
-              ".validate": false
-            }
-          }
-        },
-        "seats": {
-          ".read": "auth != null && data.parent().child('members').child(auth.uid).exists()",
-          "$n": {
-            ".validate": "$n.matches(/^([1-9]|[12][0-9]|3[0-5])$/) && newData.isString() && newData.val() === auth.uid",
-            ".write": "auth != null && ( ( !data.exists() && newData.val() === auth.uid  && root.child('liveRoomList').child($room).child('status').val() === 'waiting'  && newData.parent().parent().child('members').child(auth.uid).child('seat').val() === $n ) || ( !newData.exists() && ( !data.exists() || data.val() === auth.uid || root.child('liveRooms').child($room).child('hostUid').val() === auth.uid && root.child('liveRooms').child($room).child('members').child(auth.uid).exists() ) ) )"
-          }
-        },
-        "presence": {
-          ".read": "auth != null && data.parent().child('members').child(auth.uid).exists()",
-          "$uid": {
-            ".write": "auth != null && ( ( $uid === auth.uid && ( !newData.exists() || root.child('liveRooms').child($room).child('members').child(auth.uid).exists() ) ) || ( !newData.exists() && root.child('liveRooms').child($room).child('hostUid').val() === auth.uid && root.child('liveRooms').child($room).child('members').child(auth.uid).exists() ) )",
-            ".validate": "newData.hasChildren(['tabId','at'])",
-            "tabId": {
-              ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 32"
-            },
-            "at": {
-              ".validate": "newData.isNumber() && newData.val() === now"
-            },
-            "$other": {
-              ".validate": false
-            }
-          }
-        },
-        "setup": {
-          ".read": "auth != null && data.parent().child('members').child(auth.uid).exists()",
-          ".write": "auth != null && root.child('liveRooms').child($room).child('hostUid').val() === auth.uid && root.child('liveRooms').child($room).child('members').child(auth.uid).exists()",
-          ".validate": "newData.hasChildren(['grade','units','mode'])",
-          "grade": {
-            ".validate": "newData.isString() && newData.val().matches(/^nh[1-3]$/)"
-          },
-          "units": {
-            ".validate": "newData.hasChildren()",
-            "$i": {
-              ".validate": "$i.matches(/^[0-3]$/) && newData.isNumber() && newData.val() >= 1 && newData.val() <= 10 && newData.val() % 1 === 0"
-            }
-          },
-          "mode": {
-            ".validate": "newData.isString() && newData.val().matches(/^[a-z0-9-]{1,24}$/)"
-          },
-          "$other": {
-            ".validate": false
-          }
-        },
-        "race": {
-          ".read": "auth != null && ( data.parent().child('members').child(auth.uid).exists() || data.child('roster').child(auth.uid).exists() )",
-          ".write": "auth != null && root.child('liveRooms').child($room).child('hostUid').val() === auth.uid && root.child('liveRooms').child($room).child('members').child(auth.uid).exists() && ( ( !data.exists() && newData.exists() && root.child('liveRoomList').child($room).child('status').val() === 'starting'   && newData.parent().parent().parent().child('liveRoomList').child($room).child('status').val() === 'racing' ) || ( data.exists() && !newData.exists() && newData.parent().parent().parent().child('liveRoomList').child($room).child('status').val() === 'waiting' ) )",
-          ".validate": "newData.hasChildren(['config','startAt','roster'])",
-          "config": {
-            ".validate": "newData.hasChildren(['schemaVersion','mode','grade','units','total','questionIds','seed','fingerprint','countdownMs'])",
-            "schemaVersion": {
-              ".validate": "newData.isNumber() && newData.val() === 1"
-            },
-            "mode": {
-              ".validate": "newData.isString() && newData.val().matches(/^[a-z0-9-]{1,24}$/)"
-            },
-            "grade": {
-              ".validate": "newData.isString() && newData.val().matches(/^nh[1-3]$/)"
-            },
-            "units": {
-              ".validate": "newData.hasChildren()",
-              "$i": {
-                ".validate": "$i.matches(/^[0-3]$/) && newData.isNumber() && newData.val() >= 1 && newData.val() <= 10 && newData.val() % 1 === 0"
-              }
-            },
-            "total": {
-              ".validate": "newData.isNumber() && newData.val() === 40"
-            },
-            "questionIds": {
-              ".validate": "newData.hasChildren([\"0\",\"1\",\"2\",\"3\",\"4\",\"5\",\"6\",\"7\",\"8\",\"9\",\"10\",\"11\",\"12\",\"13\",\"14\",\"15\",\"16\",\"17\",\"18\",\"19\",\"20\",\"21\",\"22\",\"23\",\"24\",\"25\",\"26\",\"27\",\"28\",\"29\",\"30\",\"31\",\"32\",\"33\",\"34\",\"35\",\"36\",\"37\",\"38\",\"39\"])",
-              "$i": {
-                ".validate": "$i.matches(/^([0-9]|[1-3][0-9])$/) && newData.isString() && newData.val().matches(/^NH[1-3]-U[0-9]{2}-[0-9]{3}$/)"
-              }
-            },
-            "seed": {
-              ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 4294967295 && newData.val() % 1 === 0"
-            },
-            "fingerprint": {
-              ".validate": "newData.isString() && newData.val().matches(/^[a-f0-9]{64}$/)"
-            },
-            "countdownMs": {
-              ".validate": "newData.isNumber() && newData.val() >= 3000 && newData.val() <= 10000"
-            },
-            "$other": {
-              ".validate": false
-            }
-          },
-          "startAt": {
-            ".validate": "newData.isNumber() && newData.val() === now"
-          },
-          "roster": {
-            ".validate": "newData.hasChildren()",
-            "$uid": {
-              ".validate": "newData.hasChildren(['nickname','seat']) && newData.parent().parent().parent().child('seats').child(newData.child('seat').val()).val() === $uid && newData.child('nickname').val() === newData.parent().parent().parent().child('members').child($uid).child('nickname').val()",
-              "nickname": {
-                ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 20"
-              },
-              "seat": {
-                ".validate": "newData.isString() && newData.val().matches(/^([1-9]|[12][0-9]|3[0-5])$/)"
-              },
-              "$other": {
-                ".validate": false
-              }
-            }
-          },
-          "$other": {
-            ".validate": false
-          }
-        },
-        "$other": {
-          ".validate": false
-        }
-      }
-    }
-  }
-}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Learn Live With Friends (v2 – Phase B test)</title>
+<link rel="stylesheet" href="../style.css">
+<link rel="stylesheet" href="v2.css">
+</head>
+<body>
+<main class="app">
+  <div id="toast" role="alert" aria-live="polite" hidden></div>
+
+  <!-- ROOM BROWSER -->
+  <section id="browser" class="screen">
+    <h1>🎮 Learn Live With Friends</h1>
+    <p class="sub">Phase B test: rooms, lobby, host setup and START. The questions themselves are not built yet.</p>
+    <label>Your nickname (up to 20 characters)
+      <input id="nick" maxlength="20" autocomplete="off">
+    </label>
+    <div class="label">Rooms</div>
+    <div id="rooms" class="rooms" aria-live="polite"></div>
+    <p id="rooms-empty" class="wait" hidden>No rooms yet. Create one!</p>
+    <button id="btn-new" class="big green" disabled>➕ Create Room</button>
+  </section>
+
+  <!-- CREATE ROOM -->
+  <section id="create" class="screen" hidden>
+    <h2>Create a room</h2>
+    <form id="form-create" autocomplete="off">
+      <label>Room name (up to 30 characters)
+        <input id="c-name" maxlength="30" required>
+      </label>
+      <label>Password (optional, 6–20 characters)
+        <input id="c-pw" type="password" maxlength="20" autocomplete="new-password">
+      </label>
+      <button class="big green" type="submit">CREATE ROOM</button>
+      <button class="back" type="button" data-back>Back</button>
+    </form>
+  </section>
+
+  <!-- PASSWORD DIALOG -->
+  <section id="pwdlg" class="screen" hidden>
+    <h2>🔒 <span id="pwdlg-name"></span></h2>
+    <form id="form-pw" autocomplete="off">
+      <label>Room password
+        <input id="j-pw" type="password" maxlength="20" required autocomplete="off">
+      </label>
+      <button class="big blue" type="submit">JOIN ROOM</button>
+      <button class="back" type="button" data-back>Cancel</button>
+    </form>
+  </section>
+
+  <!-- LOBBY -->
+  <section id="lobby" class="screen" hidden>
+    <h2 id="lobby-name">Room</h2>
+    <p id="lobby-status" class="sub"></p>
+
+    <div id="created" class="card made" hidden>
+      <h3>🎉 ROOM CREATED!</h3>
+      <p>Tell your friends the room name and this password. It can't be shown again after you leave.</p>
+      <p>Password: <b id="created-pw"></b> <button id="btn-pw" class="small" type="button">Show</button></p>
+    </div>
+
+    <div class="card">
+      <div class="label">Racers <span id="count">0/35</span></div>
+      <ul id="players"></ul>
+      <p id="wait" class="wait">Waiting for players...</p>
+    </div>
+
+    <!-- HOST SETUP (host only) -->
+    <div id="host-tools" class="card" hidden>
+      <div class="label">Host setup</div>
+      <label>Textbook
+        <select id="s-grade"></select>
+      </label>
+      <div class="label">Units (choose 1–4)</div>
+      <div id="s-units" class="units"></div>
+      <label>Game mode
+        <select id="s-mode"></select>
+      </label>
+      <p class="note">Questions: <b id="s-total">40</b></p>
+      <button id="btn-hostplays" class="small" type="button">Host Join Race: ON</button>
+      <p class="note">ON = you race and use one of the 35 seats. OFF = you only control the room.</p>
+      <p id="s-pool" class="pool" aria-live="polite"></p>
+      <button id="btn-start" class="big green" type="button" disabled>START GAME</button>
+    </div>
+
+    <!-- WHAT THE HOST CHOSE (everybody else) -->
+    <div id="setup-view" class="card" hidden>
+      <div class="label">The host's choice</div>
+      <p id="setup-text" class="wait">The host is choosing a game...</p>
+    </div>
+
+    <button id="btn-leave" class="back" type="button">Leave room</button>
+  </section>
+
+  <!-- RACE (Phase B placeholder: countdown, settings check, racers) -->
+  <section id="race" class="screen" hidden>
+    <h2 id="race-title">🏁 Race</h2>
+    <p id="race-count" class="countdown" aria-live="polite"></p>
+    <div class="card">
+      <div class="label">Game</div>
+      <p id="race-info"></p>
+      <p id="race-verify" class="note"></p>
+    </div>
+    <div class="card">
+      <div class="label">Racers <span id="race-n"></span></div>
+      <ul id="race-players"></ul>
+    </div>
+    <p class="note">Phase B test: the questions and the live board come in the next build.</p>
+    <button id="btn-end" class="big blue" type="button" hidden>END RACE</button>
+    <button id="btn-leave2" class="back" type="button">Leave room</button>
+  </section>
+</main>
+<script type="module" src="live.js"></script>
+</body>
+</html>
