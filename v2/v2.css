@@ -25,3 +25,18 @@
 #race-players li.offline,#race-players li.gone{opacity:.6}
 .kick{margin-left:8px}
 select{max-width:100%}
+
+/* Phase C additions */
+.qword{font-size:2rem;font-weight:800;text-align:center;margin:10px 0;overflow-wrap:anywhere}
+.choices{display:grid;gap:8px;margin:8px 0}
+.choices button{padding:12px;font-size:1.1rem;font-weight:700;background:#fff;border:3px solid var(--ink);border-radius:14px;text-align:left}
+.choices button.good{background:var(--mint)}
+.choices button.bad{background:var(--coral);color:#fff;opacity:.8}
+.choices button:disabled{cursor:not-allowed}
+.board{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+.board li{display:grid;grid-template-columns:2.2em 1fr auto;gap:6px;align-items:center;font-weight:700}
+.board li.me{background:var(--paper);border-radius:10px;padding:2px 4px}
+.board li.off{opacity:.6}
+.board .bar{grid-column:2/4;height:10px;border:2px solid var(--ink);border-radius:99px;background:#fff;overflow:hidden}
+.board .bar i{display:block;height:100%;background:var(--mint)}
+.board .gap{opacity:.6;justify-content:center}
