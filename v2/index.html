@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Learn Live With Friends (v2 – Phase C test)</title>
+<title>Learn Live With Friends (v2 – Phase D test)</title>
 <link rel="stylesheet" href="../style.css">
 <link rel="stylesheet" href="v2.css">
 </head>
@@ -11,31 +11,36 @@
 <main class="app">
   <div id="toast" role="alert" aria-live="polite" hidden></div>
 
+  <!-- small settings row (sound / vibration are OFF until switched on) -->
+  <div class="prefs">
+    <button id="btn-sound" class="small pref" type="button" data-ja="おと：OFF">Sound: OFF</button>
+    <button id="btn-vib" class="small pref" type="button" data-ja="バイブ：OFF">Vibration: OFF</button>
+  </div>
+
   <!-- ROOM BROWSER -->
   <section id="browser" class="screen">
-    <h1>🎮 Learn Live With Friends</h1>
-    <p class="sub">Phase C test: rooms, lobby, host setup, START and the race itself.</p>
-    <label>Your nickname (up to 20 characters)
+    <h1>🎮 <span class="bi" data-ja="ともだちと ラーンライブ">Learn Live With Friends</span></h1>
+    <label><span class="bi" data-ja="ニックネーム（20文字まで）">Your nickname (up to 20 characters)</span>
       <input id="nick" maxlength="20" autocomplete="off">
     </label>
-    <div class="label">Rooms</div>
+    <div class="label"><span class="bi" data-ja="ルーム">Rooms</span></div>
     <div id="rooms" class="rooms" aria-live="polite"></div>
-    <p id="rooms-empty" class="wait" hidden>No rooms yet. Create one!</p>
-    <button id="btn-new" class="big green" disabled>➕ Create Room</button>
+    <p id="rooms-empty" class="wait" data-ja="まだルームがありません。つくってみよう！" hidden>No rooms yet. Create one!</p>
+    <button id="btn-new" class="big green" type="button" data-ja="➕ ルームをつくる" disabled>➕ Create Room</button>
   </section>
 
   <!-- CREATE ROOM -->
   <section id="create" class="screen" hidden>
-    <h2>Create a room</h2>
+    <h2 data-ja="ルームをつくる">Create a room</h2>
     <form id="form-create" autocomplete="off">
-      <label>Room name (up to 30 characters)
+      <label><span class="bi" data-ja="ルームの名前（30文字まで）">Room name (up to 30 characters)</span>
         <input id="c-name" maxlength="30" required>
       </label>
-      <label>Password (optional, 6–20 characters)
+      <label><span class="bi" data-ja="パスワード（なくてもOK・6〜20文字）">Password (optional, 6–20 characters)</span>
         <input id="c-pw" type="password" maxlength="20" autocomplete="new-password">
       </label>
-      <button class="big green" type="submit">CREATE ROOM</button>
-      <button class="back" type="button" data-back>Back</button>
+      <button class="big green" type="submit" data-ja="ルームをつくる">CREATE ROOM</button>
+      <button class="back" type="button" data-back data-ja="もどる">Back</button>
     </form>
   </section>
 
@@ -43,11 +48,11 @@
   <section id="pwdlg" class="screen" hidden>
     <h2>🔒 <span id="pwdlg-name"></span></h2>
     <form id="form-pw" autocomplete="off">
-      <label>Room password
+      <label><span class="bi" data-ja="ルームのパスワード">Room password</span>
         <input id="j-pw" type="password" maxlength="20" required autocomplete="off">
       </label>
-      <button class="big blue" type="submit">JOIN ROOM</button>
-      <button class="back" type="button" data-back>Cancel</button>
+      <button class="big blue" type="submit" data-ja="ルームに入る">JOIN ROOM</button>
+      <button class="back" type="button" data-back data-ja="キャンセル">Cancel</button>
     </form>
   </section>
 
@@ -57,73 +62,107 @@
     <p id="lobby-status" class="sub"></p>
 
     <div id="created" class="card made" hidden>
-      <h3>🎉 ROOM CREATED!</h3>
-      <p>Tell your friends the room name and this password. It can't be shown again after you leave.</p>
-      <p>Password: <b id="created-pw"></b> <button id="btn-pw" class="small" type="button">Show</button></p>
+      <h3 data-ja="🎉 ルームができました！">🎉 ROOM CREATED!</h3>
+      <p data-ja="ルームの名前とパスワードをともだちに教えてね。ルームを出ると、もう見られません。">Tell your friends the room name and this password. It can't be shown again after you leave.</p>
+      <p><span class="bi" data-ja="パスワード：">Password:</span> <b id="created-pw"></b> <button id="btn-pw" class="small" type="button" data-ja="見る">Show</button></p>
     </div>
 
     <div class="card">
-      <div class="label">Racers <span id="count">0/35</span></div>
+      <div class="label"><span class="bi" data-ja="レーサー">Racers</span> <span id="count">0/35</span></div>
       <ul id="players"></ul>
-      <p id="wait" class="wait">Waiting for players...</p>
+      <p id="wait" class="wait" data-ja="ともだちを まっています…">Waiting for players...</p>
     </div>
 
     <!-- HOST SETUP (host only) -->
     <div id="host-tools" class="card" hidden>
-      <div class="label">Host setup</div>
-      <label>Textbook
+      <div class="label"><span class="bi" data-ja="ホストのせってい">Host setup</span></div>
+      <label><span class="bi" data-ja="教科書">Textbook</span>
         <select id="s-grade"></select>
       </label>
-      <div class="label">Units (choose 1–4)</div>
+      <div class="label"><span class="bi" data-ja="ユニット（1〜4つえらぶ）">Units (choose 1–4)</span></div>
       <div id="s-units" class="units"></div>
-      <label>Game mode
+      <label><span class="bi" data-ja="ゲームのしゅるい">Game mode</span>
         <select id="s-mode"></select>
       </label>
-      <p class="note">Questions: <b id="s-total">40</b></p>
-      <button id="btn-hostplays" class="small" type="button">Host Join Race: ON</button>
-      <p class="note">ON = you race and use one of the 35 seats. OFF = you only control the room.</p>
+      <p class="note"><span class="bi" data-ja="もんだい数：">Questions:</span> <b id="s-total">40</b></p>
+      <button id="btn-hostplays" class="small" type="button" data-ja="ホストもレースに さんか：ON">Host Join Race: ON</button>
+      <p class="note" data-ja="ON＝ホストもレースします（35席のうち1席）。OFF＝ルームの かんりだけ します。">ON = you race and use one of the 35 seats. OFF = you only control the room.</p>
       <p id="s-pool" class="pool" aria-live="polite"></p>
-      <button id="btn-start" class="big green" type="button" disabled>START GAME</button>
+      <button id="btn-start" class="big green" type="button" data-ja="ゲームスタート" disabled>START GAME</button>
     </div>
 
     <!-- WHAT THE HOST CHOSE (everybody else) -->
     <div id="setup-view" class="card" hidden>
-      <div class="label">The host's choice</div>
-      <p id="setup-text" class="wait">The host is choosing a game...</p>
+      <div class="label"><span class="bi" data-ja="ホストが えらんだゲーム">The host's choice</span></div>
+      <p id="setup-text" class="wait"></p>
     </div>
 
-    <button id="btn-leave" class="back" type="button">Leave room</button>
+    <button id="btn-leave" class="back" type="button" data-ja="ルームを出る">Leave room</button>
   </section>
 
-  <!-- RACE -->
+  <!-- RACE + RESULTS -->
   <section id="race" class="screen" hidden>
-    <h2 id="race-title">🏁 Race</h2>
+    <h2 id="race-title" data-ja="🏁 レース">🏁 Race</h2>
     <p id="race-count" class="countdown" aria-live="polite"></p>
 
     <div id="play" class="card" hidden>
-      <div class="label">Question <b id="q-num">1</b>/40 · solved <b id="q-solved">0</b></div>
-      <p class="note">What is the English word?</p>
+      <div class="label" id="q-label"></div>
+      <p class="note" data-ja="英語は どれ？">What is the English word?</p>
       <p id="q-word" class="qword"></p>
       <div id="q-choices" class="choices"></div>
-      <p id="q-msg" class="note" aria-live="polite"></p>
-      <button id="q-skip" class="small" type="button">SKIP</button>
+      <p id="q-msg" class="note msg" aria-live="polite"></p>
+      <button id="q-skip" class="small" type="button" data-ja="スキップ">SKIP</button>
     </div>
-    <div id="my-done" class="card made" hidden><h3 id="my-done-text">🎉 You finished!</h3></div>
-    <p id="spectator-note" class="note" hidden>You are watching this race.</p>
+    <div id="my-done" class="card made" hidden><h3 id="my-done-text"></h3></div>
+    <p id="spectator-note" class="note" data-ja="レースを 見ています。" hidden>You are watching this race.</p>
 
-    <div class="card">
-      <div class="label">Live board <span id="race-n"></span></div>
+    <!-- results (race finished) -->
+    <div id="results" hidden>
+      <h2 data-ja="🏆 けっか">🏆 Results</h2>
+      <div id="podium" class="podium"></div>
+      <div id="my-result" class="card made" hidden>
+        <div class="label"><span class="bi" data-ja="あなたの けっか">Your result</span></div>
+        <p id="my-result-text" class="myres"></p>
+      </div>
+      <div class="card">
+        <div class="label"><span class="bi" data-ja="全員のランキング">Full rankings</span></div>
+        <ol id="rank-list" class="board"></ol>
+      </div>
+      <div id="review" class="card" hidden>
+        <div class="label"><span class="bi" data-ja="ふくしゅうする たんご">Words to Review</span></div>
+        <p id="review-none" class="note" data-ja="すごい！ ふくしゅうする たんごは ありません。" hidden>Nice! No words to review.</p>
+        <div id="review-wrong" hidden><b data-ja="まちがえた たんご">Wrong answers</b><ul id="review-wrong-list" class="review"></ul></div>
+        <div id="review-skip" hidden><b data-ja="スキップした たんご">Skipped</b><ul id="review-skip-list" class="review"></ul></div>
+        <p class="note" data-ja="このリストは あなたの 端末だけに あります。">This list is only on your device.</p>
+      </div>
+    </div>
+
+    <!-- live board (while racing) -->
+    <div id="live" class="card">
+      <div class="label"><span class="bi" data-ja="リアルタイム ランキング">Live board</span> <span id="race-n"></span></div>
       <ol id="board" class="board"></ol>
     </div>
     <div class="card">
-      <div class="label">Game</div>
+      <div class="label"><span class="bi" data-ja="ゲームの内容">Game</span></div>
       <p id="race-info"></p>
       <p id="race-verify" class="note"></p>
     </div>
     <p id="return-note" class="note" aria-live="polite"></p>
-    <button id="btn-end" class="big blue" type="button" hidden>END RACE</button>
-    <button id="btn-leave2" class="back" type="button">Leave room</button>
+    <button id="btn-again" class="big green" type="button" data-ja="もう一回！（おなじせってい）" hidden>PLAY AGAIN (same settings)</button>
+    <button id="btn-end" class="big blue" type="button" data-ja="レースをおわる" hidden>END RACE</button>
+    <button id="btn-proj" class="small" type="button" data-ja="大きい画面（プロジェクター）" hidden>Projector view</button>
+    <button id="btn-leave2" class="back" type="button" data-ja="ルームを出る">Leave room</button>
   </section>
+
+  <!-- confirmation box (Remove) -->
+  <div id="modal" class="modal" role="dialog" aria-modal="true" hidden>
+    <div class="modal-box">
+      <h3 id="modal-q"></h3>
+      <p id="modal-note" class="note"></p>
+      <button id="modal-yes" class="big coral" type="button" data-ja="はずす">Remove</button>
+      <button id="modal-no" class="back" type="button" data-ja="やめる">Cancel</button>
+    </div>
+  </div>
 </main>
 <script type="module" src="live.js"></script>
 </body>
