@@ -1,0 +1,15 @@
+/* Phase A additions. Base look comes from ../style.css (unchanged). */
+.rooms{display:grid;gap:8px;margin:0 0 12px;max-height:46vh;overflow:auto}
+.room-row{display:grid;grid-template-columns:auto 1fr auto auto;align-items:center;gap:8px;width:100%;
+  padding:10px 12px;background:#fff;border:3px solid var(--ink);border-radius:14px;text-align:left;font-weight:700}
+.room-row:hover:not(.off){background:var(--paper)}
+.room-row.off{opacity:.55;cursor:not-allowed}
+.room-row .rn{overflow-wrap:anywhere}
+.room-row .rn small{display:block;font-weight:600;opacity:.75}
+.room-row .rc{font-variant-numeric:tabular-nums}
+.badge{font-size:.78rem;padding:3px 9px;border-radius:99px;border:2px solid var(--ink);background:#fff;white-space:nowrap}
+.b-waiting{background:var(--mint)}.b-racing{background:var(--sun)}.b-full{background:var(--coral);color:#fff}.b-finished{background:#ddd}
+.note{font-size:.85rem;margin:8px 0 0;opacity:.8}
+#players li .tag-spec{background:#ddd}
+#players li.offline{opacity:.6}
+.small:disabled{opacity:.5;cursor:not-allowed}
