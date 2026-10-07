@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Learn Live With Friends</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main class="app">
+  <div id="toast" role="alert" aria-live="polite" hidden></div>
+
+  <section id="home" class="screen">
+    <h1>🎮 Learn Live With Friends</h1>
+    <p class="sub">Study together. Play together. Learn English together!</p>
+    <button id="btn-create" class="big green" disabled>CREATE ROOM</button>
+    <button id="btn-join" class="big blue" disabled>JOIN ROOM</button>
+  </section>
+
+  <section id="create" class="screen" hidden>
+    <h2>Create a room</h2>
+    <form id="form-create" autocomplete="off">
+      <label>Nickname (up to 20 characters)
+        <input id="c-nick" maxlength="20" required>
+      </label>
+      <label>Room password (6–20 characters)
+        <input id="c-pw" type="password" minlength="6" maxlength="20" required>
+      </label>
+      <button class="big green" type="submit">CREATE ROOM</button>
+      <button class="back" type="button" data-back>Back</button>
+    </form>
+  </section>
+
+  <section id="join" class="screen" hidden>
+    <h2>Join a room</h2>
+    <form id="form-join" autocomplete="off">
+      <label>Nickname (up to 20 characters)
+        <input id="j-nick" maxlength="20" required>
+      </label>
+      <label>Room code
+        <input id="j-code" class="codefield" maxlength="10" autocapitalize="characters" required>
+      </label>
+      <label>Room password
+        <input id="j-pw" type="password" maxlength="20" required>
+      </label>
+      <button class="big blue" type="submit">JOIN ROOM</button>
+      <button class="back" type="button" data-back>Back</button>
+    </form>
+  </section>
+
+  <section id="lobby" class="screen" hidden>
+    <h2>🎮 Learn Live With Friends</h2>
+
+    <div id="created" class="card made" hidden>
+      <h3>🎉 ROOM CREATED!</h3>
+      <p>Give your friends the room code and this password. The password can't be shown again after you leave.</p>
+      <p>Password: <b id="created-pw"></b> <button id="btn-pw" class="small" type="button">Show</button></p>
+    </div>
+
+    <div class="card">
+      <div class="label">Room code</div>
+      <div id="room-code" class="code" aria-live="polite"></div>
+      <button id="btn-copy" class="small" type="button">Copy Room Code</button>
+    </div>
+
+    <div class="card">
+      <div class="label">Players <span id="count">0/6</span></div>
+      <ul id="players"></ul>
+      <p id="wait" class="wait">Waiting for players...</p>
+    </div>
+
+    <button id="btn-leave" class="back" type="button">Leave room</button>
+  </section>
+</main>
+<script type="module" src="live.js"></script>
+</body>
+</html>
