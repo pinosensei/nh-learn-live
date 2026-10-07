@@ -1,0 +1,83 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Learn Live With Friends (v2 – Phase A test)</title>
+<link rel="stylesheet" href="../style.css">
+<link rel="stylesheet" href="v2.css">
+</head>
+<body>
+<main class="app">
+  <div id="toast" role="alert" aria-live="polite" hidden></div>
+
+  <!-- ROOM BROWSER -->
+  <section id="browser" class="screen">
+    <h1>🎮 Learn Live With Friends</h1>
+    <p class="sub">Phase A test: rooms, lobby and 35 seats. The race is not built yet.</p>
+    <label>Your nickname (up to 20 characters)
+      <input id="nick" maxlength="20" autocomplete="off">
+    </label>
+    <div class="label">Rooms</div>
+    <div id="rooms" class="rooms" aria-live="polite"></div>
+    <p id="rooms-empty" class="wait" hidden>No rooms yet. Create one!</p>
+    <button id="btn-new" class="big green" disabled>➕ Create Room</button>
+  </section>
+
+  <!-- CREATE ROOM -->
+  <section id="create" class="screen" hidden>
+    <h2>Create a room</h2>
+    <form id="form-create" autocomplete="off">
+      <label>Room name (up to 30 characters)
+        <input id="c-name" maxlength="30" required>
+      </label>
+      <label>Password (optional, 6–20 characters)
+        <input id="c-pw" type="password" maxlength="20" autocomplete="new-password">
+      </label>
+      <button class="big green" type="submit">CREATE ROOM</button>
+      <button class="back" type="button" data-back>Back</button>
+    </form>
+  </section>
+
+  <!-- PASSWORD DIALOG -->
+  <section id="pwdlg" class="screen" hidden>
+    <h2>🔒 <span id="pwdlg-name"></span></h2>
+    <form id="form-pw" autocomplete="off">
+      <label>Room password
+        <input id="j-pw" type="password" maxlength="20" required autocomplete="off">
+      </label>
+      <button class="big blue" type="submit">JOIN ROOM</button>
+      <button class="back" type="button" data-back>Cancel</button>
+    </form>
+  </section>
+
+  <!-- LOBBY -->
+  <section id="lobby" class="screen" hidden>
+    <h2 id="lobby-name">Room</h2>
+    <p id="lobby-status" class="sub"></p>
+
+    <div id="created" class="card made" hidden>
+      <h3>🎉 ROOM CREATED!</h3>
+      <p>Tell your friends the room name and this password. It can't be shown again after you leave.</p>
+      <p>Password: <b id="created-pw"></b> <button id="btn-pw" class="small" type="button">Show</button></p>
+    </div>
+
+    <div class="card">
+      <div class="label">Racers <span id="count">0/35</span></div>
+      <ul id="players"></ul>
+      <p id="wait" class="wait">Waiting for players...</p>
+    </div>
+
+    <div id="host-tools" class="card" hidden>
+      <div class="label">Host</div>
+      <button id="btn-hostplays" class="small" type="button">Host Join Race: ON</button>
+      <p class="note">ON = you race and use one of the 35 seats. OFF = you only control the room.</p>
+    </div>
+
+    <button id="btn-leave" class="back" type="button">Leave room</button>
+  </section>
+</main>
+<script type="module" src="live.js"></script>
+</body>
+</html>
