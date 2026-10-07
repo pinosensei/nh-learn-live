@@ -1,4 +1,5 @@
-// Learn Live With Friends - v2, PHASE E1 (UNTESTED): adds the English -> Japanese race mode (page-only; same rules, same data shapes).
+// Learn Live With Friends - v2, PHASE E2 (UNTESTED): adds the Spelling race mode (Japanese question, the student types the English).
+// Page-only: same rules, same data shapes. (Phase E1 added English -> Japanese; Phase D below.)
 // (Phase D below:)
 // Phase D: English + Japanese text, nickname/room-name filter, results screen, Words to Review (this device only),
 //          projector view, PLAY AGAIN, host Remove with confirmation, optional sound/vibration (OFF by default).
@@ -17,6 +18,7 @@ import { getDatabase, ref, get, set, update, onValue, onDisconnect, serverTimest
 import * as V from "./vocab.js";
 import { t, MODE_JA, questionsJa, ordinalEn } from "./strings.js";
 import { checkNickname, checkRoomName } from "./namefilter.js";
+import * as Sp from "./spelling.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyCQWPYbU7mMBmcoQMs3_Qn8ujpwOf1GxSw",
@@ -649,7 +651,7 @@ function renderReview(racer) {
   $("review").hidden = !(racer && raceWords);
   if ($("review").hidden) return;
   const mode = raceData.config.mode, rv = reviewState(), wrong = [...rv.wrong].sort((a, b) => a - b), skip = [...rv.skip].filter(i => !rv.wrong.has(i)).sort((a, b) => a - b);
-  const fill = (ul, list) => { ul.replaceChildren(); for (const i of list) { const w = raceWords[i]; if (!w) continue; const li = document.createElement("li"); const a = document.createElement("span"); a.textContent = V.promptOf(w, mode); const b = document.createElement("b"); b.textContent = V.answerOf(w, mode); li.append(a, b); ul.append(li); } };
+  const fill = (ul, list) => { ul.replaceChildren(); for (const i of list) { const w = raceWords[i]; if (!w) continue; const li = document.createElement("li"); const a = document.createElement("span"); a.textContent = V.promptOf(w, mode); const b = document.createElement("b"); const tp = (ul === $("review-wrong-list") && V.isTyping(mode) && rv.typed[i]) || []; b.textContent = (tp.length ? tp.join(" / ") + " → " : "") + V.answerOf(w, mode); li.append(a, b); ul.append(li); } };
   fill($("review-wrong-list"), wrong); fill($("review-skip-list"), skip);
   $("review-wrong").hidden = !wrong.length; $("review-skip").hidden = !skip.length; $("review-none").hidden = !!(wrong.length || skip.length);
 }
@@ -658,14 +660,15 @@ function renderReview(racer) {
 function reviewState() {
   const key = room.id + ":" + raceData.startAt;
   if (review && review.key === key) return review;
-  review = { key, wrong: new Set(), skip: new Set() };
-  try { const o = JSON.parse(sessionStorage.getItem("nhLive_review") || "null"); if (o && o.key === key) review = { key, wrong: new Set(o.wrong || []), skip: new Set(o.skip || []) }; } catch {}
+  review = { key, wrong: new Set(), skip: new Set(), typed: {} };
+  try { const o = JSON.parse(sessionStorage.getItem("nhLive_review") || "null"); if (o && o.key === key) review = { key, wrong: new Set(o.wrong || []), skip: new Set(o.skip || []), typed: o.typed || {} }; } catch {}
   return review;
 }
-function noteReview(kind, i) {
+function noteReview(kind, i, typedText) {   // typedText (Spelling) stays on this device only
   if (!room || !raceData) return;
   const rv = reviewState(); rv[kind].add(i);
-  try { sessionStorage.setItem("nhLive_review", JSON.stringify({ key: rv.key, wrong: [...rv.wrong], skip: [...rv.skip] })); } catch {}
+  if (typedText != null) { const t0 = String(typedText).trim().slice(0, 40), list = rv.typed[i] || (rv.typed[i] = []); if (t0 && !list.includes(t0) && list.length < 3) list.push(t0); }
+  try { sessionStorage.setItem("nhLive_review", JSON.stringify({ key: rv.key, wrong: [...rv.wrong], skip: [...rv.skip], typed: rv.typed })); } catch {}
 }
 
 /* ---- sound / vibration (OFF until switched on; kept only in this browser) ---- */
@@ -704,7 +707,7 @@ function startEngine() {
   const solved = new Set(solvedOf(uid));                               // resume after a reload / reconnect
   const order = V.shuffleSeeded([...Array(V.TOTAL).keys()], (raceData.config.seed ^ hash32(uid)) >>> 0);
   const c = raceData.config, units = Object.values(c.units).map(Number);
-  eng = { key, mode: c.mode, order, queue: order.filter(i => !solved.has(i)), solved, pending: new Set(), chain: Promise.resolve(), lastWrite: 0, choices: {}, wrong: new Set(), locked: false, pool: V.buildPool(vocab, c.grade, units, c.mode).words, shown: "" };
+  eng = { key, mode: c.mode, order, queue: order.filter(i => !solved.has(i)), solved, pending: new Set(), chain: Promise.resolve(), lastWrite: 0, choices: {}, wrong: new Set(), locked: false, pool: V.buildPool(vocab, c.grade, units, c.mode).words, shown: "", checker: V.isTyping(c.mode) ? Sp.makeChecker(vocab) : null, inputFor: -1 };
   renderPlayMode(true, false);
 }
 function choicesFor(i) {   // 4 choices for question i, built by vocab.js for the race's mode (every racer uses the host's mode)
@@ -726,28 +729,54 @@ function renderPlayMode(racer, over) {
   setT($("q-label"), "question", { n: eng.solved.size + 1, s: eng.solved.size });
   $("q-word").textContent = V.promptOf(raceWords[i], eng.mode);
   $("q-word").className = "qword" + (V.promptOf(raceWords[i], eng.mode).length > 16 ? " long" : "");
-  setT($("q-ask"), V.direction(eng.mode) === "en2jp" ? "askJa" : "whichWord");
-  const box = $("q-choices"); box.replaceChildren();
-  choicesFor(i).forEach((ch, k) => {
-    const b = document.createElement("button"); b.type = "button"; b.textContent = ch.text;
-    if (eng.wrong.has(k)) { b.className = "bad"; b.disabled = true; }
-    if (eng.locked && ch.ok) b.className = "good";
-    if (eng.locked) b.disabled = true;
-    b.onclick = () => answer(i, k);
-    box.append(b);
-  });
+  const typing = V.isTyping(eng.mode);
+  setT($("q-ask"), typing ? "askType" : V.direction(eng.mode) === "en2jp" ? "askJa" : "whichWord");
+  $("q-choices").hidden = typing; $("q-type").hidden = !typing;
+  if (typing) {   // Spelling: letter-count blanks (no letters revealed) and a text box that keeps its focus
+    $("q-blanks").textContent = Sp.blankPattern(raceWords[i].english);
+    if (eng.inputFor !== i) { eng.inputFor = i; $("q-input").value = ""; $("q-input").focus(); }
+  } else {
+    const box = $("q-choices"); box.replaceChildren();
+    choicesFor(i).forEach((ch, k) => {
+      const b = document.createElement("button"); b.type = "button"; b.textContent = ch.text;
+      if (eng.wrong.has(k)) { b.className = "bad"; b.disabled = true; }
+      if (eng.locked && ch.ok) b.className = "good";
+      if (eng.locked) b.disabled = true;
+      b.onclick = () => answer(i, k);
+      box.append(b);
+    });
+  }
   $("q-skip").disabled = eng.locked || eng.queue.length < 2;
 }
 const clearMsg = () => { $("q-msg").textContent = ""; $("q-msg").removeAttribute("data-ja"); };
+function correct(i) {   // a right answer (a tapped choice or a typed word): save it and move on
+  eng.locked = true; setT($("q-msg"), "correct");
+  eng.solved.add(i); eng.pending.add(i); persistSolved(i); fx(eng.solved.size >= V.TOTAL ? "done" : "ok");
+  renderPlayMode(true, false);
+  setTimeout(() => { if (!eng) return; eng.queue = eng.queue.filter(x => x !== i); eng.wrong = new Set(); eng.locked = false; clearMsg(); $("q-input").value = ""; eng.shown = ""; renderPlayMode(true, false); }, 600);
+}
 function answer(i, k) {
   if (!eng || eng.locked || eng.queue[0] !== i) return;
-  if (choicesFor(i)[k].ok) {
-    eng.locked = true; setT($("q-msg"), "correct");
-    eng.solved.add(i); eng.pending.add(i); persistSolved(i); fx(eng.solved.size >= V.TOTAL ? "done" : "ok");
-    renderPlayMode(true, false);
-    setTimeout(() => { if (!eng) return; eng.queue = eng.queue.filter(x => x !== i); eng.wrong = new Set(); eng.locked = false; clearMsg(); eng.shown = ""; renderPlayMode(true, false); }, 600);
-  } else { eng.wrong.add(k); noteReview("wrong", i); fx("bad"); setT($("q-msg"), "tryAgain"); eng.shown = ""; renderPlayMode(true, false); }
+  if (choicesFor(i)[k].ok) correct(i);
+  else { eng.wrong.add(k); noteReview("wrong", i); fx("bad"); setT($("q-msg"), "tryAgain"); eng.shown = ""; renderPlayMode(true, false); }
 }
+// Spelling: ENTER / the keyboard's Enter key. Case, spaces and punctuation do not matter (see spelling.js).
+let composing = false;   // a Japanese keyboard is still converting text: Enter then only confirms the conversion
+$("q-input").addEventListener("compositionstart", () => { composing = true; });
+$("q-input").addEventListener("compositionend", () => { composing = false; });
+$("q-input").placeholder = t("typeHere").en + " / " + t("typeHere").ja;
+$("q-type").addEventListener("submit", ev => {
+  ev.preventDefault();
+  if (!eng || eng.locked || composing || !V.isTyping(eng.mode) || !eng.queue.length) return;
+  const i = eng.queue[0], typed = $("q-input").value;
+  if (!typed.trim()) return;
+  if (eng.checker.isCorrect(typed, raceWords[i])) correct(i);
+  else {
+    noteReview("wrong", i, typed); fx("bad"); setT($("q-msg"), "tryAgain");
+    const el = $("q-input"); el.className = "bad"; setTimeout(() => { el.className = ""; }, 400);
+    if (el.select) el.select();   // the wrong text stays (easy to fix) and is selected (easy to replace)
+  }
+});
 $("q-skip").onclick = () => {   // SKIP: the question goes to the back of my queue and still has to be answered
   if (!eng || eng.locked || eng.queue.length < 2) return;
   noteReview("skip", eng.queue[0]);

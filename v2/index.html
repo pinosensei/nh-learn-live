@@ -110,6 +110,11 @@
       <p id="q-ask" class="note" data-ja="英語は どれ？">What is the English word?</p>
       <p id="q-word" class="qword"></p>
       <div id="q-choices" class="choices"></div>
+      <form id="q-type" class="typebox" autocomplete="off" hidden>
+        <p id="q-blanks" class="blanks" aria-hidden="true"></p>
+        <input id="q-input" type="text" lang="en" inputmode="text" enterkeyhint="done" maxlength="60" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" aria-label="Type the English word">
+        <button id="q-enter" class="big blue" type="submit" data-ja="こたえる">ENTER</button>
+      </form>
       <p id="q-msg" class="note msg" aria-live="polite"></p>
       <button id="q-skip" class="small" type="button" data-ja="スキップ">SKIP</button>
     </div>

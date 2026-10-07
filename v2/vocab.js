@@ -1,18 +1,18 @@
-// NH Learn Live - vocabulary pool for races (Phase B; English -> Japanese added in Phase E1).
+// NH Learn Live - vocabulary pool for races (Phase B; English -> Japanese added in Phase E1; Spelling in Phase E2).
+import { EXCLUDE } from "./spelling-exceptions.js";
 // Pure functions: no DOM, no Firebase, no localStorage. Reads PORTAL_DATA only; never modifies it.
 export const PORTAL_URL = "https://pinosensei.github.io/nh-interactive-dev/portal-data.js";
 export const TOTAL = 40;        // questions per race
 export const MAX_UNITS = 4;     // units a host may combine
 export const SCHEMA_VERSION = 1;
 
-// Game modes. The two "choice4" modes are playable; the others are listed so the dropdown can show "coming soon".
+// Game modes: exactly three for now (Japanese -> English, English -> Japanese, Spelling).
 export const MODES = [
   { id: "jp2en-choice4", label: "Japanese → English (4 choices)", available: true },
   { id: "en2jp-choice4", label: "English → Japanese (4 choices)", available: true },
-  { id: "mixed-choice4", label: "Mixed (4 choices)", available: false },
-  { id: "spelling", label: "Spelling (typing)", available: false },
-  { id: "matching", label: "Matching", available: false }
+  { id: "spelling", label: "Spelling (typing)", available: true }
 ];
+export const isTyping = modeId => modeId === "spelling";   // the student types the English instead of picking a choice
 export const modeLabel = id => (MODES.find(m => m.id === id) || { label: id }).label;
 
 /* ------------------------------------------------------------ loading */
@@ -41,8 +41,14 @@ const dupKey = w => normEn(w.english) + "|" + normJa(w.japanese);
 // en2jp uses the same rule, minus entries whose whole Japanese is only a bracketed grammar note
 // (e.g. "was = ［am、isの過去形］"): fine as a hint in jp2en, but not a meaning to pick in a Japanese choice list.
 const GRAMMAR_NOTE = /^\s*[\[［][^\]］]*[\]］]\s*$/;
+// Spelling (Japanese question, the student types the English): same rule, minus fill-in-the-blank patterns that nobody can fairly type
+// ("Call me …", "enjoy …ing", "… kind(s) of ~", "(Riko)’s", "(1970)s") and anything on the EXCLUDE list in spelling-exceptions.js.
+const PLACEHOLDER = /[…~～〜]|\.\.\./;
+const excluded = new Set(EXCLUDE.map(normEn));
+const spellable = w => !PLACEHOLDER.test(w.english || "") && !/^\s*\(/.test(w.english || "") && !excluded.has(normEn(w.english));
 const USABLE = {
   "jp2en-choice4": w => !!normEn(w.english) && JP.test(w.japanese || "") && !ARROW.test(w.japanese || ""),
+  "spelling": w => !!normEn(w.english) && JP.test(w.japanese || "") && !ARROW.test(w.japanese || "") && spellable(w),
   "en2jp-choice4": w => !!normEn(w.english) && JP.test(w.japanese || "") && !ARROW.test(w.japanese || "") && !GRAMMAR_NOTE.test(w.japanese || "")
 };
 export const isUsable = (w, modeId) => (USABLE[modeId] || USABLE["jp2en-choice4"])(w);

@@ -66,6 +66,9 @@ export const S = {
   raceOver:     ["🏁 Race finished", "🏁 レースしゅうりょう"],
   question:     ["Question {n}/40 · solved {s}", "もんだい {n}/40 ・ せいかい {s}"],
   whichWord:    ["What is the English word?", "英語は どれ？"],
+  askType:      ["Type the English word.", "英語を 入力してね。"],
+  typeHere:     ["Type the English here", "ここに 英語を 入力"],
+  enterBtn:     ["ENTER", "こたえる"],
   askJa:        ["What does it mean in Japanese?", "日本語の いみは どれ？"],
   modeUnsupported:["⚠️ This page doesn't know the host's game mode. Please reload the page.", "⚠️ このページは ホストの ゲームの しゅるいを しりません。ページを 再読み込みしてください。"],
   correct:      ["✅ Correct!", "✅ せいかい！"],
@@ -155,8 +158,6 @@ export function t(key, vars = {}) {
 export const MODE_JA = {
   "jp2en-choice4": "日本語→英語（4択）",
   "en2jp-choice4": "英語→日本語（4択）",
-  "mixed-choice4": "ミックス（4択）",
-  "spelling": "スペリング（入力）",
-  "matching": "マッチング"
+  "spelling": "スペリング（入力）"
 };
 export const questionsJa = n => n + "問";

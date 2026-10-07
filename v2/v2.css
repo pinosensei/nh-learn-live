@@ -87,3 +87,14 @@ body.projector #btn-proj{font-size:1rem}
 .qword.long{font-size:1.5rem}
 .choices button{overflow-wrap:anywhere;line-height:1.35}
 @media (max-width:480px){.qword.long{font-size:1.3rem}}
+
+/* Phase E2: Spelling (typing) */
+.typebox{display:grid;gap:8px;margin:8px 0}
+.blanks{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:1.5rem;font-weight:800;text-align:center;letter-spacing:.08em;white-space:pre-wrap;overflow-wrap:anywhere;margin:4px 0}
+.typebox input{width:100%;box-sizing:border-box;font-size:1.4rem;font-weight:700;padding:12px;border:3px solid var(--ink);border-radius:14px;background:#fff;text-transform:none}
+.typebox input.bad{background:var(--coral);color:#fff;animation:shake .3s}
+@keyframes shake{25%{transform:translateX(-6px)}75%{transform:translateX(6px)}}
+@media (prefers-reduced-motion:reduce){.typebox input.bad{animation:none}}
+body.projector #q-type{display:none !important}
+@media (max-width:480px){.blanks{font-size:1.25rem}}
+.choices[hidden],.typebox[hidden]{display:none}
