@@ -260,7 +260,7 @@ function attach() {
     onValue(ref(db, b + "race"), s => { raceData = s.val(); render(); }, () => {})
   ];
 }
-function detach() { unsubs.forEach(u => u()); unsubs = []; clearTimeout(promoTimer); clearTimeout(stuckT); clearTimeout(setupT); clearInterval(hbTimer); clearInterval(raceTick); hbTimer = null; raceTick = null; }
+function detach() { unsubs.forEach(u => u()); unsubs = []; clearTimeout(promoTimer); clearTimeout(stuckT); clearTimeout(setupT); clearTimeout(returnT); returnT = null; returnKey = ""; eng = null; raceWords = null; clearInterval(hbTimer); clearInterval(raceTick); hbTimer = null; raceTick = null; }
 function listenErr() { if (room) recover(); }
 
 function membersChanged() {
@@ -451,7 +451,7 @@ $("btn-start").onclick = () => work(async () => {
 
 /* ------------------------------------------------------- remove / end race */
 const removeWrites = (id, who) => {
-  const w = { [`liveRooms/${id}/members/${who}`]: null, [`liveRooms/${id}/presence/${who}`]: null };
+  const w = { [`liveRooms/${id}/members/${who}`]: null };   // (people being removed have no presence marker, so there is nothing to clear there)
   const seat = members[who] && members[who].seat;
   if (seat) { if (seatsReal[seat] === who) w[`liveRooms/${id}/seats/${seat}`] = null; w[`liveRoomList/${id}/seats/${seat}`] = null; }
   return w;
@@ -459,9 +459,7 @@ const removeWrites = (id, who) => {
 function removeStudent(who) { return work(async () => { if (room && hostUid === uid && who !== uid && !presence[who]) await update(ref(db), removeWrites(room.id, who)); }); }
 $("btn-end").onclick = () => work(async () => {
   if (!room || hostUid !== uid) return;
-  const id = room.id; let w = { [`liveRooms/${id}/race`]: null, [`liveRoomList/${id}/status`]: "waiting" };
-  for (const who of Object.keys(members)) if (who !== uid && !presence[who]) w = { ...w, ...removeWrites(id, who) };   // dropped racers are cleared now
-  await update(ref(db), w);
+  await update(ref(db), returnWrites(room.id));   // dropped racers are cleared now
 });
 function renderPlayersExtras(list, iAmHost) {   // "Remove" for students who dropped (grey dot), lobby list
   if (!iAmHost) return;
@@ -472,50 +470,215 @@ function renderPlayersExtras(list, iAmHost) {   // "Remove" for students who dro
 }
 function removeButton(who) { const b = document.createElement("button"); b.type = "button"; b.className = "small kick"; b.textContent = "Remove"; b.onclick = () => removeStudent(who); return b; }
 
-/* ---------------------------------------------------- race screen (placeholder) */
+/* ------------------------------------------------------------------ race screen */
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const hash32 = s => { let h = 2166136261; for (const c of String(s)) { h ^= c.charCodeAt(0); h = Math.imul(h, 16777619); } return h >>> 0; };
+const progOf = id => (raceData && raceData.progress && raceData.progress[id]) || {};
+const solvedOf = id => Object.keys(progOf(id).solved || {}).map(Number);
+let raceWords = null, raceWordsKey = "";                        // the 40 words as THIS device resolves them (verified against the host's fingerprint)
+let eng = null;                                                 // this racer's game state
+let finishTry = 0, returnT = null, returnKey = "";
+
 function routeScreens(iAmHost) {
   const inRace = !!entry && (entry.status === "racing" || entry.status === "finished") && !!raceData && !!raceData.config;
   if (inRace) {
     if ($("race").hidden) { show("race"); verifyKey = ""; }
     renderRace(iAmHost);
-    if (!raceTick) raceTick = setInterval(tickCountdown, 250);
+    if (!raceTick) raceTick = setInterval(tick, 250);
   } else {
     if ($("lobby").hidden) show("lobby");
-    clearInterval(raceTick); raceTick = null;
+    clearInterval(raceTick); raceTick = null; clearTimeout(returnT); returnT = null; returnKey = ""; eng = null;
   }
 }
-function tickCountdown() {
+const raceStartMs = () => raceData.startAt + raceData.config.countdownMs;
+function tick() {
   if (!room || !raceData || !raceData.config) return;
-  const left = raceData.startAt + raceData.config.countdownMs - serverNow();
-  $("race-count").textContent = left > 0 ? `Starting in ${Math.ceil(left / 1000)}...` : "GO!";
+  const left = raceStartMs() - serverNow();
+  $("race-count").textContent = entry && entry.status === "finished" ? "🏁 Race finished" : left > 0 ? `Starting in ${Math.ceil(left / 1000)}...` : "GO!";
+  if (left <= 0) startEngine();
 }
+
+/* ---- ranking (same on every device: finished by server time, then unfinished by solved count) ---- */
+function ranking() {
+  const rows = Object.entries(raceData.roster || {}).map(([id, r]) => {
+    const p = progOf(id), n = solvedOf(id).length;
+    return { id, nickname: r.nickname, solved: n, finishedAt: typeof p.finishedAt === "number" ? p.finishedAt : null };
+  });
+  rows.sort((a, b) => (a.finishedAt != null) !== (b.finishedAt != null) ? (a.finishedAt != null ? -1 : 1)
+    : a.finishedAt != null ? (a.finishedAt - b.finishedAt) || (a.id < b.id ? -1 : 1)
+    : (b.solved - a.solved) || a.nickname.localeCompare(b.nickname));
+  rows.forEach((r, i) => { r.place = i + 1; });
+  return rows;
+}
+const medal = n => (n === 1 ? "🥇" : n === 2 ? "🥈" : n === 3 ? "🥉" : n + ".");
+const fmtTime = ms => { const s = Math.max(0, ms) / 1000; return `${Math.floor(s / 60)}:${(s % 60).toFixed(1).padStart(4, "0")}`; };
+
 function renderRace(iAmHost) {
-  const c = raceData.config;
+  const c = raceData.config, over = entry.status === "finished", racer = !!(raceData.roster && raceData.roster[uid]);
   $("race-info").textContent = setupText(c);
-  $("btn-end").hidden = !iAmHost;
-  const roster = Object.entries(raceData.roster || {}).map(([id, r]) => ({ id, ...r })).sort((a, b) => Number(a.seat) - Number(b.seat));
-  $("race-n").textContent = `${roster.length}`;
-  const ul = $("race-players"); ul.replaceChildren();
-  for (const r of roster) {
-    const li = document.createElement("li"), here = !!presence[r.id], member = !!members[r.id];
-    if (!here) li.className = member ? "offline" : "gone";
-    const span = document.createElement("span");
-    span.textContent = (r.id === hostUid ? "👑 " : here ? "🟢 " : "⚫ ") + r.nickname + (r.id === uid ? " (you)" : "") + (here ? "" : member ? " — Disconnected" : " — Removed");
-    li.append(span);
-    if (iAmHost && member && !here && r.id !== uid) li.append(removeButton(r.id));
-    ul.append(li);
-  }
-  tickCountdown();
+  $("btn-end").hidden = !iAmHost; $("btn-end").textContent = over ? "BACK TO LOBBY" : "END RACE";
+  $("spectator-note").hidden = racer;
+  tick();
   // does MY copy of the vocabulary give the host's exact 40 words?
   const key = c.fingerprint + (vocab ? "v" : "n");
   if (key !== verifyKey) {
-    verifyKey = key; const v = $("race-verify");
+    verifyKey = key; const v = $("race-verify"); raceWords = null;
     if (!vocab) v.textContent = "Checking the word list...";
     else V.verifyConfig(vocab, c).then(r => {
       if (verifyKey !== key) return;
-      v.textContent = r.status === "ok" ? "✅ Your word list matches the host's (40 words verified)." : "⚠️ Your word list doesn't match the host's (" + r.reason + "). Please reload the page.";
+      if (r.status === "ok") { raceWords = r.words; v.textContent = "✅ Your word list matches the host's (40 words verified)."; startEngine(); }
+      else v.textContent = "⚠️ Your word list doesn't match the host's (" + r.reason + "). Please reload the page.";
     }).catch(() => { v.textContent = "⚠️ Couldn't check the word list."; });
   }
+  renderBoard(racer, over);
+  renderPlayMode(racer, over);
+  maybeFinishRace(racer);
+  maybeReturnToLobby(iAmHost, over);
+}
+
+function renderBoard(racer, over) {
+  const rows = ranking(), ul = $("board"); ul.replaceChildren();
+  $("race-n").textContent = String(rows.length);
+  let shown = rows;
+  const meIdx = rows.findIndex(r => r.id === uid);
+  if (racer && !over && rows.length > 10 && meIdx >= 0) {   // racers see the top 5, themselves and their neighbours
+    const keep = new Set([...Array(5).keys(), meIdx - 1, meIdx, meIdx + 1].filter(i => i >= 0 && i < rows.length));
+    shown = [...keep].sort((a, b) => a - b).map(i => rows[i]);
+  }
+  let prev = -1;
+  for (const r of shown) {
+    const idx = rows.indexOf(r);
+    if (prev >= 0 && idx > prev + 1) { const g = document.createElement("li"); g.className = "gap"; g.textContent = "···"; ul.append(g); }
+    prev = idx;
+    const li = document.createElement("li"), here = !!presence[r.id], member = !!members[r.id];
+    li.className = (r.id === uid ? "me " : "") + (here ? "" : "off");
+    const place = document.createElement("span"); place.textContent = r.finishedAt != null ? medal(r.place) : "";
+    const name = document.createElement("span");
+    name.textContent = (r.id === hostUid ? "👑 " : here ? "🟢 " : "⚫ ") + r.nickname + (r.id === uid ? " (you)" : "") + (here ? "" : member ? " — Disconnected" : " — Removed");
+    const stat = document.createElement("span");
+    stat.textContent = r.finishedAt != null ? "🏁 " + fmtTime(r.finishedAt - raceStartMs()) : `${r.solved}/${V.TOTAL}`;
+    const bar = document.createElement("div"); bar.className = "bar"; const fill = document.createElement("i"); fill.style.width = Math.round(100 * r.solved / V.TOTAL) + "%"; bar.append(fill);
+    li.append(place, name, stat, bar);
+    if (iAmHostNow() && member && !here && r.id !== uid) li.append(removeButton(r.id));
+    ul.append(li);
+  }
+}
+const iAmHostNow = () => hostUid === uid && !!members[uid];
+
+/* ---- the game for a racer: Japanese -> English, 4 choices ---- */
+function startEngine() {
+  if (!room || !raceData || !raceData.config || !raceWords || !entry || entry.status !== "racing") return;
+  if (!raceData.roster || !raceData.roster[uid]) return;
+  if (raceStartMs() - serverNow() > 0) return;
+  const key = String(raceData.startAt) + ":" + raceData.config.fingerprint;
+  if (eng && eng.key === key) return;
+  const solved = new Set(solvedOf(uid));                               // resume after a reload / reconnect
+  const order = V.shuffleSeeded([...Array(V.TOTAL).keys()], (raceData.config.seed ^ hash32(uid)) >>> 0);
+  const c = raceData.config, units = Object.values(c.units).map(Number);
+  eng = { key, order, queue: order.filter(i => !solved.has(i)), solved, pending: new Set(), chain: Promise.resolve(), lastWrite: 0, choices: {}, wrong: new Set(), locked: false, pool: V.buildPool(vocab, c.grade, units, c.mode).words, shown: "" };
+  renderPlayMode(true, false);
+}
+function choicesFor(i) {
+  if (eng.choices[i]) return eng.choices[i];
+  const t = raceWords[i], seen = new Set([t.english.toLowerCase()]), opts = [];
+  for (const w of shuffle(eng.pool)) {
+    if (opts.length >= 3) break;
+    if (V.sameEnglish(w, t) || V.sameJapanese(w, t) || seen.has(w.english.toLowerCase())) continue;
+    seen.add(w.english.toLowerCase()); opts.push({ text: w.english, ok: false });
+  }
+  return (eng.choices[i] = shuffle([{ text: t.english, ok: true }, ...opts]));
+}
+function renderPlayMode(racer, over) {
+  const playing = racer && !!eng && !over && entry.status === "racing";
+  const iFinished = racer && typeof progOf(uid).finishedAt === "number";
+  $("play").hidden = !(playing && eng.queue.length > 0 && !iFinished);
+  $("my-done").hidden = !(racer && (iFinished || (eng && eng.solved.size === V.TOTAL)));
+  if (!$("my-done").hidden) {
+    const r = ranking().find(x => x.id === uid);
+    $("my-done-text").textContent = over && r ? `🏁 Race finished. You came ${medal(r.place)} (${r.finishedAt != null ? fmtTime(r.finishedAt - raceStartMs()) : r.solved + "/" + V.TOTAL})` : "🎉 You finished! Waiting for the others...";
+  }
+  if (!playing || $("play").hidden) return;
+  // merge answers the server already has (another tab, a retry) into the local queue
+  for (const i of solvedOf(uid)) if (!eng.solved.has(i)) { eng.solved.add(i); eng.queue = eng.queue.filter(x => x !== i); }
+  if (!eng.queue.length) return;
+  const i = eng.queue[0], shownKey = i + "|" + [...eng.wrong].join(",") + "|" + eng.locked + "|" + eng.solved.size;
+  if (eng.shown === shownKey) return; eng.shown = shownKey;
+  $("q-num").textContent = String(eng.solved.size + 1); $("q-solved").textContent = String(eng.solved.size);
+  $("q-word").textContent = raceWords[i].japanese;
+  const box = $("q-choices"); box.replaceChildren();
+  choicesFor(i).forEach((ch, k) => {
+    const b = document.createElement("button"); b.type = "button"; b.textContent = ch.text;
+    if (eng.wrong.has(k)) { b.className = "bad"; b.disabled = true; }
+    if (eng.locked && ch.ok) b.className = "good";
+    if (eng.locked) b.disabled = true;
+    b.onclick = () => answer(i, k);
+    box.append(b);
+  });
+  $("q-skip").disabled = eng.locked || eng.queue.length < 2;
+}
+function answer(i, k) {
+  if (!eng || eng.locked || eng.queue[0] !== i) return;
+  if (choicesFor(i)[k].ok) {
+    eng.locked = true; $("q-msg").textContent = "✅ Correct!";
+    eng.solved.add(i); eng.pending.add(i); persistSolved(i);
+    renderPlayMode(true, false);
+    setTimeout(() => { if (!eng) return; eng.queue = eng.queue.filter(x => x !== i); eng.wrong = new Set(); eng.locked = false; $("q-msg").textContent = ""; eng.shown = ""; renderPlayMode(true, false); }, 600);
+  } else { eng.wrong.add(k); $("q-msg").textContent = "Not quite. Try again!"; eng.shown = ""; renderPlayMode(true, false); }
+}
+$("q-skip").onclick = () => {   // SKIP: the question goes to the back of my queue and still has to be answered
+  if (!eng || eng.locked || eng.queue.length < 2) return;
+  eng.queue.push(eng.queue.shift()); eng.wrong = new Set(); $("q-msg").textContent = ""; eng.shown = ""; renderPlayMode(true, false);
+};
+// Save one correct answer. One write at a time, spaced out (the rules enforce a pause), retried if it fails.
+function persistSolved(i) {
+  const e = eng, id = room.id;
+  e.chain = e.chain.then(async () => {
+    for (let t = 0; t < 8 && eng === e && room && room.id === id; t++) {
+      const wait = 700 - (Date.now() - e.lastWrite); if (wait > 0) await sleep(wait);
+      const w = { [`liveRooms/${id}/race/progress/${uid}/solved/${i}`]: serverTimestamp(), [`liveRooms/${id}/race/progress/${uid}/lastAt`]: serverTimestamp() };
+      const done = [...e.solved].filter(x => !e.pending.has(x) || x === i).length;     // answers already saved + this one
+      if (done >= V.TOTAL) w[`liveRooms/${id}/race/progress/${uid}/finishedAt`] = serverTimestamp();
+      try { await update(ref(db), w); e.lastWrite = Date.now(); e.pending.delete(i); return; }
+      catch (err) { e.lastWrite = Date.now(); if (!denied(err)) console.warn("save answer", err); await sleep(900); }
+    }
+  });
+}
+// If all 40 are saved but the finish stamp is missing (a retry gave up), add it.
+setInterval(() => {
+  if (!room || !eng || !raceData || !entry || entry.status !== "racing") return;
+  const p = progOf(uid);
+  if (solvedOf(uid).length >= V.TOTAL && typeof p.finishedAt !== "number")
+    update(ref(db), { [`liveRooms/${room.id}/race/progress/${uid}/finishedAt`]: serverTimestamp() }).catch(() => {});
+  for (const i of eng.solved) if (!(p.solved && p.solved[i] != null) && !eng.pending.has(i)) { eng.pending.add(i); persistSolved(i); }   // an answer that never reached the server
+}, 4000);
+
+/* ---- the race ends by itself, and the room goes back to the lobby ---- */
+function maybeFinishRace(racer) {
+  if (!racer || entry.status !== "racing" || typeof progOf(uid).finishedAt !== "number") return;
+  for (const [, who] of Object.entries(seatsReal)) if (typeof progOf(who).finishedAt !== "number" && presence[who]) return;   // someone who is here is still racing
+  if (Date.now() - finishTry < 3000) return; finishTry = Date.now();
+  set(ref(db, `liveRoomList/${room.id}/status`), "finished").catch(() => {});   // the rules double-check this
+}
+function returnWrites(id) {   // race removed, room back to waiting, people who are not here are cleared (the old host too)
+  let w = { [`liveRooms/${id}/race`]: null, [`liveRoomList/${id}/status`]: "waiting" };
+  for (const who of Object.keys(members)) if (who !== uid && !presence[who]) w = { ...w, ...removeWrites(id, who) };
+  return w;
+}
+// Host present: the host presses BACK TO LOBBY. Host away: the present members, in joining order, do it for them after a pause.
+function maybeReturnToLobby(iAmHost, over) {
+  const note = $("return-note");
+  const hostHere = !!hostUid && !!presence[hostUid] && !!members[hostUid];
+  if (!over || hostHere || !members[uid] || !presence[uid]) { clearTimeout(returnT); returnT = null; returnKey = ""; note.textContent = ""; return; }
+  const here = Object.entries(members).filter(([id]) => presence[id]).map(([id, m]) => ({ id, joinedAt: m.joinedAt || 0 })).sort((a, b) => a.joinedAt - b.joinedAt || (a.id < b.id ? -1 : 1));
+  const rank = Math.max(0, here.findIndex(p => p.id === uid)), delay = 15000 + rank * 4000;
+  const key = room.id + ":" + raceData.startAt + ":" + rank;
+  note.textContent = "The host is away. The room returns to the lobby soon, and the next player in order becomes host.";
+  if (returnKey === key) return; returnKey = key; clearTimeout(returnT);
+  returnT = setTimeout(async () => {
+    returnT = null;
+    if (!room || !entry || entry.status !== "finished" || (presence[hostUid] && members[hostUid])) return;
+    try { await update(ref(db), returnWrites(room.id)); } catch (e) { console.warn("return to lobby", e); returnKey = ""; }   // somebody else was first: fine
+  }, delay);
 }
 
 /* ---------------------------------------------------------------- heartbeat */
